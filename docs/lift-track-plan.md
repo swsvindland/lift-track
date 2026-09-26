@@ -119,7 +119,7 @@ Stages 0–4 are built on `lift/foundation`:
 
 The Progress tab replaced a History tab; history opens from Progress.
 
-Next: encrypted backups (port from Macros), then stage 5 on-device AI.
+Encrypted backup, restore with recovery, CSV export and erase are also built ([docs/backups.md](backups.md)). Next: stage 5 on-device AI.
 
 ## Decisions (September 26, 2026)
 

@@ -76,7 +76,8 @@
       ],
       "expo-background-task",
       "expo-live-activity",
-      "expo-quick-actions"
+      "expo-quick-actions",
+      "expo-sharing"
     ],
     "experiments": {
       "typedRoutes": true,

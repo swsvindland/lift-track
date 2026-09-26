@@ -5,6 +5,8 @@ import { router } from "expo-router";
 import { SystemIcon, SystemLabel, SystemPanel, SystemText as Text } from "@/components/system";
 import { SettingsSelect, ErrorText, Screen } from "@/components/ui";
 import { GymEditor } from "@/components/settings/gym-editor";
+import { BackupPanel } from "@/components/settings/backup-panel";
+import { DataPanel } from "@/components/settings/data-panel";
 import { useStore } from "@/lib/store";
 import { languages, type LanguagePreference } from "@/lib/translations";
 import { enableHealthSync, disableHealthSync } from "@/lib/health-schedule";
@@ -154,6 +156,8 @@ export function SettingsScreen() {
         )}
       </SystemPanel>
       <ErrorText message={error || healthSyncError ? t(error || healthSyncError) : ""} />
+      <BackupPanel />
+      <DataPanel />
       <Text className="text-center text-sm text-muted">
         Vector Lift keeps everything on this phone. No account, no servers.
       </Text>

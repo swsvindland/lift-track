@@ -6,8 +6,21 @@ import type { HealthAdapter, HealthKind, HealthRecord } from "./health-types";
 import { validDay, dayOf } from "./metrics";
 
 let running = false;
+let maintenance = false;
+
+/** Restore and erase hold this so no sync reads or writes records while they're replaced. */
+export async function withHealthPaused<T>(work: () => Promise<T>): Promise<T> {
+  if (running || maintenance) throw new Error("Wait for Health sync to finish, then try again.");
+  maintenance = true;
+  try {
+    return await work();
+  } finally {
+    maintenance = false;
+  }
+}
+
 export async function syncHealth(adapter?: HealthAdapter, interactive = true) {
-  if (running) throw new Error("syncing");
+  if (running || maintenance) throw new Error("syncing");
   if (!adapter && Constants.appOwnership === "expo") throw new Error("healthUnavailable");
   running = true;
   try {
@@ -165,7 +178,8 @@ async function syncWorkouts(provider: HealthAdapter, prefix: string) {
   for (const w of finished) {
     const key = `${prefix}workout:${w.id}`;
     const hash = `${w.startedAt}|${w.endedAt}|${w.name}`;
-    const link = links.find((l) => l.key === key);
+    // Matched by workout, not key: a restored workout keeps the Health copy it already has.
+    const link = links.find((l) => l.localId === w.id);
     if (link?.fingerprint === hash) continue;
     if (link && link.fingerprint !== "deleted") await removeWorkout(link.remoteId);
     const remoteId = await writeWorkout({
@@ -175,6 +189,8 @@ async function syncWorkouts(provider: HealthAdapter, prefix: string) {
       endedAt: w.endedAt!,
       title: w.name || "Strength training",
     });
+    // A link from before a restore may carry another install's key.
+    if (link && link.key !== key) db.delete(healthLinks).where(eq(healthLinks.key, link.key)).run();
     db.insert(healthLinks)
       .values({
         key,

@@ -50,13 +50,14 @@ Everything stays on the phone: no account, no server, no analytics and no networ
   - Swaps apply for today or the rest of the program and keep a real prescription.
   - See [programs and progression](docs/progression.md).
 - **Body weight:** log it, or sync it both ways with Apple Health / Health Connect. It's recorded on each workout for bodyweight exercises.
+- **Backups:** an encrypted backup (password-derived AES-256-GCM) of every workout, program, custom exercise, gym and weight, saved wherever you choose from the share sheet. Restore shows what's in the file, saves an encrypted recovery copy of your current records first, then replaces everything in one transaction. You can also export sets or body weight as CSV, or erase everything. See [backups](docs/backups.md).
 - **Health:**
   - With sync on, finished workouts are written to Apple Health or Health Connect as strength training, with start and end times only, right after you finish.
   - Edits rewrite the Health copy, and deletions remove it.
   - Sets and loads stay in the app. No energy is estimated, so a watch recording the same session isn't double counted.
   - Only permissions you granted are used.
 
-Backups, a home-screen widget and the on-device AI features are next.
+A home-screen widget and the on-device AI features are next.
 
 ## Run
 
@@ -98,5 +99,6 @@ Tests run real SQLite through the production Drizzle driver. They cover:
 - supersets, reorder and swap
 - weekly volume
 - health sync, including workout export, rewrite on edit and removal
+- backup encryption, exact restore, rejected files, erase and CSV
 
 The documentation under `docs/app-store/` is inherited from Body and is reference material only.
