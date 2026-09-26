@@ -1,6 +1,6 @@
 import Constants from "expo-constants";
 import { eq } from "drizzle-orm";
-import { db, healthLinks, measurements, preferences, weightEntries } from "@/db";
+import { db, healthLinks, preferences, weightEntries } from "@/db";
 import { getHealthAdapter } from "./health-native";
 import type { HealthAdapter, HealthKind, HealthRecord } from "./health-types";
 import { validDay, dayOf } from "./metrics";
@@ -27,7 +27,7 @@ export async function syncHealth(adapter?: HealthAdapter, interactive = true) {
       installation = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
       db.insert(preferences).values({ key: "installation", value: installation }).run();
     }
-    const prefix = `body-track:${installation}:`;
+    const prefix = `lift-track:${installation}:`;
     let imported = 0;
     let exported = 0;
     const localRecords = () => [
@@ -42,31 +42,6 @@ export async function syncHealth(adapter?: HealthAdapter, interactive = true) {
           measuredAt: w.measuredAt,
           version: w.updatedAt?.getTime() ?? w.createdAt?.getTime() ?? 1,
         })),
-      ...db
-        .select()
-        .from(measurements)
-        .all()
-        .filter((m) => m.kind === "height")
-        .map((m) => ({
-          id: m.id,
-          kind: "height" as const,
-          value: m.values.height,
-          measuredAt: m.measuredAt,
-          version: m.updatedAt,
-        })),
-      ...db
-        .select()
-        .from(measurements)
-        .all()
-        .filter((m) => m.kind === "body")
-        .flatMap((m) =>
-          (provider.bodyWriteKinds ?? []).flatMap((kind) => {
-            const value = m.values[kind];
-            return Number.isFinite(value) && value > 0 && value <= (kind === "bodyFat" ? 74.9 : 300)
-              ? [{ id: m.id, kind, value, measuredAt: m.measuredAt, version: m.updatedAt }]
-              : [];
-          })
-        ),
     ];
     const fingerprint = (record: { value: number; measuredAt: string }) =>
       `${record.value}:${record.measuredAt}`;
@@ -103,12 +78,7 @@ export async function syncHealth(adapter?: HealthAdapter, interactive = true) {
     }
     const current = localRecords();
     for (const link of links.filter((l) => l.origin === "local" && l.fingerprint !== "deleted")) {
-      if (
-        link.localKind !== "weight" &&
-        link.localKind !== "height" &&
-        !provider.bodyWriteKinds?.includes(link.localKind as "waist" | "bodyFat")
-      )
-        continue;
+      if (link.localKind !== "weight") continue;
       if (!current.some((r) => r.kind === link.localKind && r.id === link.localId)) {
         await provider.remove(link.localKind as HealthKind, link.remoteId);
         db.update(healthLinks)
@@ -119,8 +89,7 @@ export async function syncHealth(adapter?: HealthAdapter, interactive = true) {
     }
     const external = await provider.read();
     for (const record of external) {
-      // Body measurements are export-only; never turn them into height imports.
-      if (record.kind !== "weight" && record.kind !== "height") continue;
+      if (record.kind !== "weight") continue;
       if (record.clientId?.startsWith(prefix) || !validHealthRecord(record)) continue;
       const key = `health:${record.kind}:${record.id}`;
       const link = db.select().from(healthLinks).where(eq(healthLinks.key, key)).get();
@@ -128,29 +97,17 @@ export async function syncHealth(adapter?: HealthAdapter, interactive = true) {
       if (link?.fingerprint === hash) continue;
       db.transaction((tx) => {
         let localId = link?.localId;
-        if (record.kind === "weight") {
-          if (link)
-            tx.update(weightEntries)
-              .set({ weightKg: record.value, measuredAt: record.measuredAt, updatedAt: new Date() })
-              .where(eq(weightEntries.id, link.localId))
-              .run();
-          else
-            localId = tx
-              .insert(weightEntries)
-              .values({ weightKg: record.value, measuredAt: record.measuredAt })
-              .returning()
-              .get().id;
-        } else {
-          const data = {
-            kind: "height" as const,
-            measuredAt: record.measuredAt,
-            values: { height: record.value },
-            updatedAt: Date.now(),
-          };
-          if (link)
-            tx.update(measurements).set(data).where(eq(measurements.id, link.localId)).run();
-          else localId = tx.insert(measurements).values(data).returning().get().id;
-        }
+        if (link)
+          tx.update(weightEntries)
+            .set({ weightKg: record.value, measuredAt: record.measuredAt, updatedAt: new Date() })
+            .where(eq(weightEntries.id, link.localId))
+            .run();
+        else
+          localId = tx
+            .insert(weightEntries)
+            .values({ weightKg: record.value, measuredAt: record.measuredAt })
+            .returning()
+            .get().id;
         tx.insert(healthLinks)
           .values({
             key,
@@ -179,7 +136,7 @@ export function validHealthRecord(record: HealthRecord) {
   return (
     Number.isFinite(record.value) &&
     record.value > 0 &&
-    record.value <= (record.kind === "weight" ? 500 : 300) &&
+    record.value <= 500 &&
     Number.isFinite(Date.parse(record.measuredAt)) &&
     validDay(dayOf(record.measuredAt))
   );

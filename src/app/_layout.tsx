@@ -1,6 +1,7 @@
 import { useFonts } from "expo-font";
+import { Ionicons } from "@expo/vector-icons";
 import { useUniwind } from "uniwind";
-import type { JSX } from "react";
+import { useEffect, type JSX } from "react";
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { HeroUINativeProvider } from "heroui-native";
@@ -10,6 +11,7 @@ import { useMigrations } from "drizzle-orm/expo-sqlite/migrator";
 import migrations from "../../drizzle/migrations";
 import { StoreProvider } from "@/lib/store";
 import { db } from "@/db";
+import { prepareRestNotifications } from "@/lib/rest-timer";
 
 import "../global.css";
 
@@ -22,8 +24,13 @@ export default function RootLayout(): JSX.Element {
   const [fontsLoaded, fontError] = useFonts({
     Inter: require("../../assets/fonts/Inter.ttf"),
     IBMPlexMono: require("../../assets/fonts/IBMPlexMono-Regular.ttf"),
+    // Icon-only controls must not render blank on a cold start.
+    ...Ionicons.font,
   });
   const { success, error } = useMigrations(db, migrations);
+  useEffect(() => {
+    void prepareRestNotifications().catch(() => {});
+  }, []);
 
   if (error) {
     return (
@@ -47,6 +54,7 @@ export default function RootLayout(): JSX.Element {
         <StoreProvider>
           <Stack screenOptions={{ headerShown: false }}>
             <Stack.Screen name="(tabs)" />
+            <Stack.Screen name="workout" options={{ presentation: "modal" }} />
           </Stack>
         </StoreProvider>
         <ThemedStatusBar />

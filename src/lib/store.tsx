@@ -3,8 +3,8 @@ import { Uniwind } from "uniwind";
 import { AppState } from "react-native";
 import { configureHealthSchedule, syncHealthIfDue } from "./health-schedule";
 import { desc } from "drizzle-orm";
-import { useLocales } from "expo-localization";
-import { db, measurements, photos, preferences, weightEntries } from "@/db";
+import { getLocales, useLocales } from "expo-localization";
+import { db, preferences, weightEntries } from "@/db";
 import type { Units } from "./metrics";
 import { languagePreference, resolveLanguage, type Language, translate } from "./translations";
 
@@ -22,14 +22,14 @@ function read() {
       .from(weightEntries)
       .orderBy(desc(weightEntries.measuredAt), desc(weightEntries.id))
       .all(),
-    measurements: db
-      .select()
-      .from(measurements)
-      .orderBy(desc(measurements.measuredAt), desc(measurements.id))
-      .all(),
-    photos: db.select().from(photos).orderBy(desc(photos.measuredAt), desc(photos.id)).all(),
-    units: (prefs.units ?? "metric") as Units,
-    formula: (prefs.formula === "female" ? "female" : "male") as "male" | "female",
+    // Until chosen, follow the phone: US gyms load in pounds; UK gyms use kg plates.
+    units: (prefs.units
+      ? prefs.units === "imperial"
+        ? "imperial"
+        : "metric"
+      : getLocales()[0]?.measurementSystem === "us"
+        ? "imperial"
+        : "metric") as Units,
     theme: (prefs.theme === "dark" || prefs.theme === "light" ? prefs.theme : "system") as
       "dark" | "light" | "system",
     healthSyncEnabled: prefs.healthSyncEnabled === "true",
@@ -40,6 +40,7 @@ function read() {
 }
 type Store = ReturnType<typeof read> & {
   language: Language;
+  locale: string;
   refresh: () => void;
   setPreference: (key: string, value: string) => void;
   t: (key: string) => string;
@@ -91,6 +92,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       value={{
         ...data,
         language,
+        locale,
         refresh,
         setPreference,
         t: (key) => translate(language, key),

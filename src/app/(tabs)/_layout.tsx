@@ -1,13 +1,9 @@
-import { useStore } from "@/lib/store";
 import { NativeTabs } from "expo-router/unstable-native-tabs";
 import { useThemeColor } from "heroui-native";
-import type { JSX } from "react";
 
-export default function TabsLayout(): JSX.Element {
-  const { t } = useStore();
+export default function TabsLayout() {
   const background = useThemeColor("background");
-  const accent = useThemeColor("link");
-
+  const accent = useThemeColor("accent-soft-foreground");
   return (
     <NativeTabs
       tintColor={accent}
@@ -16,23 +12,19 @@ export default function TabsLayout(): JSX.Element {
       backBehavior="initialRoute"
     >
       <NativeTabs.Trigger name="index" contentStyle={{ backgroundColor: background }}>
-        <NativeTabs.Trigger.Label>{t("home")}</NativeTabs.Trigger.Label>
-        <NativeTabs.Trigger.Icon sf="scalemass" md="monitor_weight" />
+        <NativeTabs.Trigger.Label>Today</NativeTabs.Trigger.Label>
+        <NativeTabs.Trigger.Icon sf="dumbbell" md="fitness_center" />
       </NativeTabs.Trigger>
-      <NativeTabs.Trigger name="body" contentStyle={{ backgroundColor: background }}>
-        <NativeTabs.Trigger.Label>{t("body")}</NativeTabs.Trigger.Label>
-        <NativeTabs.Trigger.Icon sf="figure.stand" md="accessibility_new" />
+      <NativeTabs.Trigger name="history" contentStyle={{ backgroundColor: background }}>
+        <NativeTabs.Trigger.Label>History</NativeTabs.Trigger.Label>
+        <NativeTabs.Trigger.Icon sf="calendar" md="calendar_month" />
       </NativeTabs.Trigger>
-      <NativeTabs.Trigger name="photos" contentStyle={{ backgroundColor: background }}>
-        <NativeTabs.Trigger.Label>{t("photos")}</NativeTabs.Trigger.Label>
-        <NativeTabs.Trigger.Icon sf="photo.on.rectangle" md="photo_library" />
-      </NativeTabs.Trigger>
-      <NativeTabs.Trigger name="height" contentStyle={{ backgroundColor: background }}>
-        <NativeTabs.Trigger.Label>{t("height")}</NativeTabs.Trigger.Label>
-        <NativeTabs.Trigger.Icon sf="arrow.up.and.down" md="height" />
+      <NativeTabs.Trigger name="library" contentStyle={{ backgroundColor: background }}>
+        <NativeTabs.Trigger.Label>Exercises</NativeTabs.Trigger.Label>
+        <NativeTabs.Trigger.Icon sf="list.bullet.rectangle" md="list_alt" />
       </NativeTabs.Trigger>
       <NativeTabs.Trigger name="settings" contentStyle={{ backgroundColor: background }}>
-        <NativeTabs.Trigger.Label>{t("settings")}</NativeTabs.Trigger.Label>
+        <NativeTabs.Trigger.Label>Settings</NativeTabs.Trigger.Label>
         <NativeTabs.Trigger.Icon sf="gearshape" md="settings" />
       </NativeTabs.Trigger>
     </NativeTabs>
