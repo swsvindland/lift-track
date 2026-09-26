@@ -5,7 +5,8 @@ import { eq } from "drizzle-orm";
 import { db, preferences } from "@/db";
 
 /* The rest timer is a deadline, not a countdown: it's stored, so it survives the app being
-   killed, and a local notification fires at the deadline while the app is in the background. */
+   killed. While it runs, the lock screen shows it (a Live Activity on iPhone, an ongoing
+   notification on Android) and a local notification fires at the deadline. */
 
 export type Rest = { endsAt: number; total: number; label: string };
 
@@ -33,12 +34,15 @@ function write(value: Rest | null) {
   listeners.forEach((listener) => listener());
 }
 
-// Expo Go can't show local notifications on Android; the in-app timer still works.
-const notificationsAvailable = Platform.OS !== "web" && Constants.appOwnership !== "expo";
-let scheduled: string | null = null;
+// Expo Go has neither local notifications on Android nor Live Activities; the in-app timer works.
+const native = Platform.OS !== "web" && Constants.appOwnership !== "expo";
+// Fixed ids, so a timer can be cancelled after the app was killed and relaunched.
+const END = "rest-end";
+const ONGOING = "rest-ongoing";
+const ACTIVITY_KEY = "restActivity";
 
 async function notifications() {
-  return notificationsAvailable ? await import("expo-notifications") : null;
+  return native ? await import("expo-notifications") : null;
 }
 
 export async function prepareRestNotifications() {
@@ -53,21 +57,92 @@ export async function prepareRestNotifications() {
       shouldSetBadge: false,
     }),
   });
-  if (Platform.OS === "android")
+  if (Platform.OS === "android") {
     await n.setNotificationChannelAsync("rest", {
-      name: "Rest timer",
+      name: "Rest over",
       importance: n.AndroidImportance.HIGH,
       vibrationPattern: [0, 250, 150, 250],
     });
+    await n.setNotificationChannelAsync("rest-running", {
+      name: "Rest timer",
+      importance: n.AndroidImportance.LOW,
+      sound: null,
+      vibrationPattern: null,
+      showBadge: false,
+    });
+  }
+  // A rest that ended while the app was closed leaves nothing on the lock screen.
+  if (!current) await clearLockScreen();
 }
+
+const clock = (ms: number) =>
+  new Date(ms).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+
+// ——— iOS Live Activity: a countdown the system draws, so it ticks with the app asleep ———
+
+async function liveActivity() {
+  if (!native || Platform.OS !== "ios") return null;
+  try {
+    return await import("expo-live-activity");
+  } catch {
+    return null;
+  }
+}
+
+const storedActivity = () =>
+  db.select().from(preferences).where(eq(preferences.key, ACTIVITY_KEY)).get()?.value || null;
+function storeActivity(id: string | null) {
+  const value = id ?? "";
+  db.insert(preferences)
+    .values({ key: ACTIVITY_KEY, value })
+    .onConflictDoUpdate({ target: preferences.key, set: { value } })
+    .run();
+}
+
+async function showActivity(rest: Rest) {
+  const la = await liveActivity();
+  if (!la) return;
+  const state = { title: "Rest", subtitle: rest.label, progressBar: { date: rest.endsAt } };
+  const id = storedActivity();
+  try {
+    if (id) la.updateActivity(id, state);
+    else
+      storeActivity(
+        la.startActivity(state, {
+          backgroundColor: "#071017",
+          titleColor: "#f3f6f7",
+          subtitleColor: "#87939b",
+          progressViewTint: "#22d3ee",
+          progressViewLabelColor: "#f3f6f7",
+          timerType: "digital",
+          deepLinkUrl: "lifttrack://workout",
+        }) ?? null
+      );
+  } catch {
+    // Live Activities turned off in Settings: the notification still comes.
+    storeActivity(null);
+  }
+}
+
+async function endActivity() {
+  const id = storedActivity();
+  if (!id) return;
+  storeActivity(null);
+  const la = await liveActivity();
+  try {
+    la?.stopActivity(id, { title: "Rest over" });
+  } catch {
+    /* Already gone. */
+  }
+}
+
+// ——— Notifications: the alert at the deadline, and on Android an ongoing one until then ———
 
 async function schedule(rest: Rest | null) {
   const n = await notifications();
   if (!n) return;
-  if (scheduled) {
-    await n.cancelScheduledNotificationAsync(scheduled).catch(() => {});
-    scheduled = null;
-  }
+  await n.cancelScheduledNotificationAsync(END).catch(() => {});
+  if (Platform.OS === "android") await n.dismissNotificationAsync(ONGOING).catch(() => {});
   if (!rest) return;
   const seconds = Math.round((rest.endsAt - Date.now()) / 1000);
   if (seconds < 1) return;
@@ -76,7 +151,19 @@ async function schedule(rest: Rest | null) {
     const asked = await n.requestPermissionsAsync();
     if (asked.status !== "granted") return;
   }
-  scheduled = await n.scheduleNotificationAsync({
+  if (Platform.OS === "android")
+    await n.scheduleNotificationAsync({
+      identifier: ONGOING,
+      content: {
+        title: `Rest until ${clock(rest.endsAt)}`,
+        body: rest.label,
+        sticky: true,
+        autoDismiss: false,
+      },
+      trigger: { channelId: "rest-running" },
+    });
+  await n.scheduleNotificationAsync({
+    identifier: END,
     content: { title: "Rest over", body: rest.label, sound: true },
     trigger: {
       type: n.SchedulableTriggerInputTypes.TIME_INTERVAL,
@@ -86,10 +173,20 @@ async function schedule(rest: Rest | null) {
   });
 }
 
+async function clearLockScreen() {
+  await schedule(null);
+  await endActivity();
+}
+
+function show(rest: Rest) {
+  void schedule(rest).catch(() => {});
+  void showActivity(rest).catch(() => {});
+}
+
 export function startRest(seconds: number, label: string) {
   const rest = { endsAt: Date.now() + seconds * 1000, total: seconds, label };
   write(rest);
-  void schedule(rest).catch(() => {});
+  show(rest);
 }
 
 export function adjustRest(seconds: number) {
@@ -98,12 +195,12 @@ export function adjustRest(seconds: number) {
   if (endsAt <= Date.now()) return stopRest();
   const rest = { ...current, endsAt, total: Math.max(1, current.total + seconds) };
   write(rest);
-  void schedule(rest).catch(() => {});
+  show(rest);
 }
 
 export function stopRest() {
   write(null);
-  void schedule(null).catch(() => {});
+  void clearLockScreen().catch(() => {});
 }
 
 const subscribe = (listener: () => void) => {
@@ -140,3 +237,9 @@ export function defaultRest(exercise: { pattern: string; equipment: string }) {
 
 export const formatClock = (seconds: number) =>
   `${Math.floor(seconds / 60)}:${String(Math.floor(seconds % 60)).padStart(2, "0")}`;
+
+/** Coming back to the app: a rest that ran out while away is cleared from the lock screen. */
+export function settleRest() {
+  if (current && current.endsAt <= Date.now()) stopRest();
+  else if (!current) void clearLockScreen().catch(() => {});
+}

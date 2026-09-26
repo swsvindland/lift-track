@@ -23,7 +23,7 @@
   "healthUnavailable": "La sincronización requiere una compilación nativa y un proveedor de salud compatible.",
   "syncFailed": "No se completó. Comprueba los permisos e inténtalo de nuevo.",
   "syncDone": "Sincronización completa",
-  "healthPrivacy": "El peso corporal se sincroniza en ambos sentidos con Apple Health o Health Connect. Los entrenamientos se quedan en la app.",
+  "healthPrivacy": "El peso corporal se sincroniza en ambos sentidos con Apple Health o Health Connect. Los entrenamientos terminados se guardan allí como entrenamiento de fuerza, solo con sus horas; las series y cargas se quedan en la app.",
   "syncHelp": "La sincronización importa los pesos corporales disponibles y exporta los que registras aquí. Los registros importados siguen gestionados por su origen. HealthKit puede ocultar registros si se deniega el acceso de lectura.",
   "theme": "Tema",
   "dark": "Oscuro",

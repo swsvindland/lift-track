@@ -6,12 +6,13 @@ export async function getHealthAdapter(): Promise<HealthAdapter> {
     !(await hc.initialize())
   )
     throw new Error("healthUnavailable");
+  const permissions = [
+    { recordType: "Weight", accessType: "read" },
+    { recordType: "Weight", accessType: "write" },
+    { recordType: "ExerciseSession", accessType: "write" },
+  ] as { recordType: "Weight" | "ExerciseSession"; accessType: "read" | "write" }[];
   return {
     async authorize(interactive = true) {
-      const permissions = (["read", "write"] as const).map((accessType) => ({
-        recordType: "Weight" as const,
-        accessType,
-      }));
       const granted = interactive
         ? await hc.requestPermission(permissions)
         : await hc.getGrantedPermissions();
@@ -25,16 +26,18 @@ export async function getHealthAdapter(): Promise<HealthAdapter> {
           /* Foreground sync is still available. */
         }
       }
-      if (
-        permissions.some(
-          (p) =>
-            !granted.some(
-              (g) =>
-                "recordType" in g && g.recordType === p.recordType && g.accessType === p.accessType
-            )
-        )
-      )
+      const has = (recordType: string, accessType: string) =>
+        granted.some(
+          (g) => "recordType" in g && g.recordType === recordType && g.accessType === accessType
+        );
+      const access = {
+        weightRead: has("Weight", "read"),
+        weightWrite: has("Weight", "write"),
+        workoutWrite: has("ExerciseSession", "write"),
+      };
+      if (!access.weightRead && !access.weightWrite && !access.workoutWrite)
         throw new Error("syncFailed");
+      return access;
     },
     async read() {
       const records: HealthRecord[] = [];
@@ -80,6 +83,27 @@ export async function getHealthAdapter(): Promise<HealthAdapter> {
     },
     async remove(_kind, id) {
       await hc.deleteRecordsByUuids("Weight", [id], []);
+    },
+    async writeWorkout(w) {
+      const ids = await hc.insertRecords([
+        {
+          recordType: "ExerciseSession",
+          exerciseType: hc.ExerciseType.STRENGTH_TRAINING,
+          title: w.title,
+          startTime: w.startedAt,
+          endTime: w.endedAt,
+          metadata: {
+            clientRecordId: w.clientId,
+            clientRecordVersion: w.version,
+            recordingMethod: hc.RecordingMethod.RECORDING_METHOD_MANUAL_ENTRY,
+          },
+        },
+      ]);
+      if (!ids[0]) throw new Error("syncFailed");
+      return ids[0];
+    },
+    async removeWorkout(id) {
+      await hc.deleteRecordsByUuids("ExerciseSession", [id], []);
     },
   };
 }

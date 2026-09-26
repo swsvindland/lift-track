@@ -104,16 +104,22 @@ This fork is from Body, which is older than Macros. Port these from `../macro-tr
 
 ## Status (September 26, 2026)
 
-Stages 0–3 are built on `lift/foundation`:
+Stages 0–4 are built on `lift/foundation`:
 
 - Identity and exercise library
 - Logger and rest timer
 - Programs with progression and feedback-driven volume ([docs/progression.md](progression.md))
 - Progress analytics
+- Native polish:
+  - Live Activity rest timer and Android ongoing notification
+  - Health workout export
+  - Quick actions and `lifttrack://start`
+
+  The home-screen widget is deferred.
 
 The Progress tab replaced a History tab; history opens from Progress.
 
-Next: stage 4 native polish, then backups and stage 5 on-device AI.
+Next: encrypted backups (port from Macros), then stage 5 on-device AI.
 
 ## Decisions (September 26, 2026)
 

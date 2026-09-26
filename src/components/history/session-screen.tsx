@@ -10,6 +10,7 @@ import {
   SystemText as Text,
 } from "@/components/system";
 import { Screen } from "@/components/ui";
+import { syncHealthSoon } from "@/lib/health-schedule";
 import { MuscleFeedback } from "./muscle-feedback";
 import { write, useQuery } from "@/lib/data";
 import { useExercises } from "@/lib/exercise-store";
@@ -135,6 +136,7 @@ export function SessionScreen({ id, finished }: { id: number; finished: boolean 
                 style: "destructive",
                 onPress: () => {
                   write(() => discardWorkout(detail.id));
+                  void syncHealthSoon();
                   router.back();
                 },
               },

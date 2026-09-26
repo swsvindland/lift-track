@@ -30,7 +30,8 @@
       "permissions": [
         "android.permission.health.READ_WEIGHT",
         "android.permission.health.WRITE_WEIGHT",
-        "android.permission.health.READ_HEALTH_DATA_IN_BACKGROUND"
+        "android.permission.health.READ_HEALTH_DATA_IN_BACKGROUND",
+        "android.permission.health.WRITE_EXERCISE"
       ],
       "package": "dev.svindland.vector.lift"
     },
@@ -60,7 +61,7 @@
         {
           "background": false,
           "NSHealthShareUsageDescription": "Import your body weight into Vector Lift for bodyweight exercises when you choose to sync.",
-          "NSHealthUpdateUsageDescription": "Save the body weights you log in Vector Lift to Apple Health when you choose to sync."
+          "NSHealthUpdateUsageDescription": "Save the body weights you log and your finished workouts to Apple Health when you choose to sync."
         }
       ],
       "react-native-health-connect",
@@ -73,7 +74,9 @@
           }
         }
       ],
-      "expo-background-task"
+      "expo-background-task",
+      "expo-live-activity",
+      "expo-quick-actions"
     ],
     "experiments": {
       "typedRoutes": true,

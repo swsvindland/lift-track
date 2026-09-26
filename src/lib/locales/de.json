@@ -23,7 +23,7 @@
   "healthUnavailable": "Die Synchronisierung erfordert einen nativen Build und einen unterstützten Gesundheitsdienst.",
   "syncFailed": "Synchronisierung fehlgeschlagen. Berechtigungen prüfen und erneut versuchen.",
   "syncDone": "Synchronisierung abgeschlossen",
-  "healthPrivacy": "Das Körpergewicht wird in beide Richtungen mit Apple Health oder Health Connect synchronisiert. Trainings bleiben in der App.",
+  "healthPrivacy": "Das Körpergewicht wird in beide Richtungen mit Apple Health oder Health Connect synchronisiert. Abgeschlossene Trainings werden dort als Krafttraining gespeichert, nur mit ihren Zeiten; Sätze und Gewichte bleiben in der App.",
   "syncHelp": "Die Synchronisierung importiert verfügbare Körpergewichte und exportiert die hier erfassten. Importierte Einträge werden weiter von ihrer Quelle verwaltet. HealthKit kann Einträge ausblenden, wenn der Lesezugriff verweigert wurde.",
   "theme": "Design",
   "dark": "Dunkel",

@@ -23,7 +23,7 @@
   "healthUnavailable": "Synchronisatie vereist een native build en een ondersteunde gezondheidsdienst.",
   "syncFailed": "Synchronisatie mislukt. Controleer machtigingen en probeer opnieuw.",
   "syncDone": "Synchronisatie voltooid",
-  "healthPrivacy": "Lichaamsgewicht wordt in beide richtingen gesynchroniseerd met Apple Gezondheid of Health Connect. Trainingen blijven in de app.",
+  "healthPrivacy": "Lichaamsgewicht wordt in beide richtingen gesynchroniseerd met Apple Gezondheid of Health Connect. Afgeronde trainingen worden daar als krachttraining opgeslagen, alleen met hun tijden; sets en gewichten blijven in de app.",
   "syncHelp": "Synchronisatie importeert beschikbare lichaamsgewichten en exporteert de gewichten die je hier vastlegt. Geïmporteerde gegevens blijven beheerd door hun bron. HealthKit kan gegevens verbergen als leestoegang is geweigerd.",
   "theme": "Thema",
   "dark": "Donker",

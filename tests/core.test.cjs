@@ -289,3 +289,62 @@ test("daily health schedule respects opt-in, due time, failures and opt-out", as
   assert.equal(get("healthSyncEnabled"), "false");
   sqlite.close();
 });
+
+test("finished workouts go to Health once, are rewritten when edited and removed when deleted", async () => {
+  const { db, sqlite } = database();
+  const health = load("src/lib/health.ts", {
+    "expo-constants": { appOwnership: "standalone" },
+    "@/db": { db, ...schema },
+    "./health-native": {},
+    "./metrics": metrics,
+  });
+  const insert = (values) =>
+    db
+      .insert(schema.workouts)
+      .values({ startedAt: "2026-09-01T10:00:00Z", updatedAt: 1, ...values })
+      .returning()
+      .get();
+  const done = insert({ name: "Upper A", endedAt: "2026-09-01T11:00:00Z" });
+  insert({ name: "Open", endedAt: null });
+  const remote = new Map();
+  const removed = [];
+  let access = { weightRead: true, weightWrite: true, workoutWrite: true };
+  const adapter = {
+    authorize: async () => access,
+    read: async () => [],
+    write: async (r) => r.clientId,
+    remove: async () => {},
+    writeWorkout: async (w) => {
+      const id = `hk-${remote.size + removed.length}`;
+      remote.set(id, w);
+      return id;
+    },
+    removeWorkout: async (id) => {
+      remote.delete(id);
+      removed.push(id);
+    },
+  };
+  assert.deepEqual(await health.syncHealth(adapter), { imported: 0, exported: 1 });
+  assert.equal(remote.size, 1);
+  const [written] = remote.values();
+  assert.equal(written.title, "Upper A");
+  assert.equal(written.endedAt, "2026-09-01T11:00:00Z");
+  assert.equal((await health.syncHealth(adapter)).exported, 0, "no duplicates");
+  db.update(schema.workouts)
+    .set({ endedAt: "2026-09-01T11:15:00Z" })
+    .where(eq(schema.workouts.id, done.id))
+    .run();
+  await health.syncHealth(adapter);
+  assert.equal(remote.size, 1);
+  assert.equal([...remote.values()][0].endedAt, "2026-09-01T11:15:00Z");
+  assert.equal(removed.length, 1, "the old copy is removed");
+  db.delete(schema.workouts).where(eq(schema.workouts.id, done.id)).run();
+  await health.syncHealth(adapter);
+  assert.equal(remote.size, 0);
+  // Without workout permission nothing is written.
+  access = { weightRead: true, weightWrite: true, workoutWrite: false };
+  insert({ name: "Lower A", endedAt: "2026-09-02T11:00:00Z" });
+  await health.syncHealth(adapter);
+  assert.equal(remote.size, 0);
+  sqlite.close();
+});

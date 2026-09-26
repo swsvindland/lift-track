@@ -36,6 +36,18 @@ export async function syncHealthIfDue() {
   }
 }
 
+/** After finishing a workout: send it to Health now rather than at the next daily sync. */
+export async function syncHealthSoon() {
+  if (get("healthSyncEnabled") !== "true") return;
+  try {
+    await syncHealth(undefined, false);
+    set("healthSyncError", "");
+  } catch (error) {
+    if (!(error instanceof Error && error.message === "syncing"))
+      set("healthSyncError", "syncFailed");
+  }
+}
+
 TaskManager.defineTask(TASK, async () => {
   try {
     return (await syncHealthIfDue())

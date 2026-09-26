@@ -23,7 +23,7 @@
   "healthUnavailable": "Synk kräver en native-version och en hälsotjänst som stöds.",
   "syncFailed": "Synk misslyckades. Kontrollera behörigheter och försök igen.",
   "syncDone": "Synk klar",
-  "healthPrivacy": "Kroppsvikt synkas åt båda hållen med Apple Hälsa eller Health Connect. Träningspass stannar i appen.",
+  "healthPrivacy": "Kroppsvikt synkas åt båda hållen med Apple Hälsa eller Health Connect. Avslutade pass sparas där som styrketräning, bara med sina tider; set och vikter stannar i appen.",
   "syncHelp": "Synkningen importerar tillgängliga kroppsvikter och exporterar de du loggar här. Importerade poster hanteras fortfarande av sin källa. HealthKit kan dölja poster om läsbehörighet nekas.",
   "theme": "Tema",
   "dark": "Mörkt",

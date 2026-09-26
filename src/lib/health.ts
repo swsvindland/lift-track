@@ -1,6 +1,6 @@
 import Constants from "expo-constants";
-import { eq } from "drizzle-orm";
-import { db, healthLinks, preferences, weightEntries } from "@/db";
+import { eq, isNotNull } from "drizzle-orm";
+import { db, healthLinks, preferences, weightEntries, workouts } from "@/db";
 import { getHealthAdapter } from "./health-native";
 import type { HealthAdapter, HealthKind, HealthRecord } from "./health-types";
 import { validDay, dayOf } from "./metrics";
@@ -17,7 +17,11 @@ export async function syncHealth(adapter?: HealthAdapter, interactive = true) {
     } catch {
       throw new Error("healthUnavailable");
     }
-    await provider.authorize(interactive);
+    const access = (await provider.authorize(interactive)) ?? {
+      weightRead: true,
+      weightWrite: true,
+      workoutWrite: true,
+    };
     let installation = db
       .select()
       .from(preferences)
@@ -47,7 +51,7 @@ export async function syncHealth(adapter?: HealthAdapter, interactive = true) {
       `${record.value}:${record.measuredAt}`;
     const links = db.select().from(healthLinks).all();
     // Export before import. Persist each mapping immediately, so partial failures are safely retried.
-    for (const record of localRecords()) {
+    for (const record of access.weightWrite ? localRecords() : []) {
       if (
         links.some(
           (l) => l.localKind === record.kind && l.localId === record.id && l.origin === "health"
@@ -78,7 +82,7 @@ export async function syncHealth(adapter?: HealthAdapter, interactive = true) {
     }
     const current = localRecords();
     for (const link of links.filter((l) => l.origin === "local" && l.fingerprint !== "deleted")) {
-      if (link.localKind !== "weight") continue;
+      if (link.localKind !== "weight" || !access.weightWrite) continue;
       if (!current.some((r) => r.kind === link.localKind && r.id === link.localId)) {
         await provider.remove(link.localKind as HealthKind, link.remoteId);
         db.update(healthLinks)
@@ -87,7 +91,9 @@ export async function syncHealth(adapter?: HealthAdapter, interactive = true) {
           .run();
       }
     }
-    const external = await provider.read();
+    if (access.workoutWrite && provider.writeWorkout && provider.removeWorkout)
+      exported += await syncWorkouts(provider, prefix);
+    const external = access.weightRead ? await provider.read() : [];
     for (const record of external) {
       if (record.kind !== "weight") continue;
       if (record.clientId?.startsWith(prefix) || !validHealthRecord(record)) continue;
@@ -140,4 +146,55 @@ export function validHealthRecord(record: HealthRecord) {
     Number.isFinite(Date.parse(record.measuredAt)) &&
     validDay(dayOf(record.measuredAt))
   );
+}
+
+/**
+ * Writes finished workouts as strength-training sessions. Health stores can't edit a workout,
+ * so a changed one is removed and written again; one deleted here is removed there.
+ */
+async function syncWorkouts(provider: HealthAdapter, prefix: string) {
+  const writeWorkout = provider.writeWorkout!;
+  const removeWorkout = provider.removeWorkout!;
+  let exported = 0;
+  const finished = db.select().from(workouts).where(isNotNull(workouts.endedAt)).all();
+  const links = db
+    .select()
+    .from(healthLinks)
+    .all()
+    .filter((l) => l.localKind === "workout" && l.origin === "local");
+  for (const w of finished) {
+    const key = `${prefix}workout:${w.id}`;
+    const hash = `${w.startedAt}|${w.endedAt}|${w.name}`;
+    const link = links.find((l) => l.key === key);
+    if (link?.fingerprint === hash) continue;
+    if (link && link.fingerprint !== "deleted") await removeWorkout(link.remoteId);
+    const remoteId = await writeWorkout({
+      clientId: key,
+      version: Math.max(w.updatedAt, Date.now()),
+      startedAt: w.startedAt,
+      endedAt: w.endedAt!,
+      title: w.name || "Strength training",
+    });
+    db.insert(healthLinks)
+      .values({
+        key,
+        localKind: "workout",
+        localId: w.id,
+        remoteId,
+        fingerprint: hash,
+        origin: "local",
+      })
+      .onConflictDoUpdate({ target: healthLinks.key, set: { remoteId, fingerprint: hash } })
+      .run();
+    exported++;
+  }
+  for (const link of links) {
+    if (link.fingerprint === "deleted" || finished.some((w) => w.id === link.localId)) continue;
+    await removeWorkout(link.remoteId);
+    db.update(healthLinks)
+      .set({ fingerprint: "deleted" })
+      .where(eq(healthLinks.key, link.key))
+      .run();
+  }
+  return exported;
 }

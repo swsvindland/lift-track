@@ -23,7 +23,7 @@
   "healthUnavailable": "La synchro nécessite une version native et un service de santé compatible.",
   "syncFailed": "Échec de la synchro. Vérifiez les autorisations et réessayez.",
   "syncDone": "Synchro terminée",
-  "healthPrivacy": "Le poids corporel se synchronise dans les deux sens avec Apple Santé ou Health Connect. Les séances restent dans l'app.",
+  "healthPrivacy": "Le poids corporel se synchronise dans les deux sens avec Apple Santé ou Health Connect. Les séances terminées y sont enregistrées comme musculation, avec leurs horaires uniquement ; séries et charges restent dans l'app.",
   "syncHelp": "La synchronisation importe les poids corporels disponibles et exporte ceux que vous saisissez ici. Les données importées restent gérées par leur source. HealthKit peut masquer des données si l'accès en lecture est refusé.",
   "theme": "Thème",
   "dark": "Sombre",

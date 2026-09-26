@@ -4,12 +4,22 @@ export async function getHealthAdapter(): Promise<HealthAdapter> {
   // Lazy import: opening the app in Expo Go must not load an unavailable Nitro module.
   const hk = await import("@kingstinct/react-native-healthkit");
   const bodyMass = "HKQuantityTypeIdentifierBodyMass" as const;
+  const workout = "HKWorkoutTypeIdentifier" as const;
   if (!hk.isHealthDataAvailable()) throw new Error("healthUnavailable");
+  const shared = (type: typeof bodyMass | typeof workout) =>
+    hk.authorizationStatusFor(type) === hk.AuthorizationStatus.sharingAuthorized;
   return {
     async authorize(interactive = true) {
-      if (interactive) await hk.requestAuthorization({ toRead: [bodyMass], toShare: [bodyMass] });
-      if (hk.authorizationStatusFor(bodyMass) !== hk.AuthorizationStatus.sharingAuthorized)
-        throw new Error("syncFailed");
+      if (interactive)
+        await hk.requestAuthorization({ toRead: [bodyMass], toShare: [bodyMass, workout] });
+      const access = {
+        // iOS never says whether reading was allowed; a denied read just returns nothing.
+        weightRead: true,
+        weightWrite: shared(bodyMass),
+        workoutWrite: shared(workout),
+      };
+      if (!access.weightWrite && !access.workoutWrite) throw new Error("syncFailed");
+      return access;
     },
     async read() {
       const samples = await hk.queryQuantitySamples(bodyMass, {
@@ -50,6 +60,23 @@ export async function getHealthAdapter(): Promise<HealthAdapter> {
     },
     async remove(_kind, id) {
       await hk.deleteObjects(bodyMass, { uuid: id });
+    },
+    async writeWorkout(w) {
+      // Duration only: no energy estimate, so a watch that also recorded the session isn't
+      // double counted in Activity.
+      const result = await hk.saveWorkoutSample(
+        hk.WorkoutActivityType.traditionalStrengthTraining,
+        [],
+        new Date(w.startedAt),
+        new Date(w.endedAt),
+        undefined,
+        { HKSyncIdentifier: w.clientId, HKSyncVersion: w.version, HKWorkoutBrandName: w.title }
+      );
+      if (!result) throw new Error("syncFailed");
+      return result.uuid;
+    },
+    async removeWorkout(id) {
+      await hk.deleteObjects(workout, { uuid: id });
     },
   };
 }

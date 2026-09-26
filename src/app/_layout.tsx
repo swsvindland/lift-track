@@ -6,12 +6,12 @@ import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { HeroUINativeProvider } from "heroui-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
-import { ActivityIndicator, Text, View } from "react-native";
+import { ActivityIndicator, AppState, Text, View } from "react-native";
 import { useMigrations } from "drizzle-orm/expo-sqlite/migrator";
 import migrations from "../../drizzle/migrations";
 import { StoreProvider } from "@/lib/store";
 import { db } from "@/db";
-import { prepareRestNotifications } from "@/lib/rest-timer";
+import { prepareRestNotifications, settleRest } from "@/lib/rest-timer";
 
 import "../global.css";
 
@@ -30,6 +30,10 @@ export default function RootLayout(): JSX.Element {
   const { success, error } = useMigrations(db, migrations);
   useEffect(() => {
     void prepareRestNotifications().catch(() => {});
+    const subscription = AppState.addEventListener("change", (state) => {
+      if (state === "active") settleRest();
+    });
+    return () => subscription.remove();
   }, []);
 
   if (error) {
@@ -55,6 +59,7 @@ export default function RootLayout(): JSX.Element {
           <Stack screenOptions={{ headerShown: false }}>
             <Stack.Screen name="(tabs)" />
             <Stack.Screen name="workout" options={{ presentation: "modal" }} />
+            <Stack.Screen name="start" options={{ presentation: "modal", animation: "none" }} />
           </Stack>
         </StoreProvider>
         <ThemedStatusBar />

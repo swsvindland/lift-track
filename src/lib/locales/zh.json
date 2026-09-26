@@ -23,7 +23,7 @@
   "healthUnavailable": "健康同步需要原生构建和支持的健康服务。",
   "syncFailed": "同步未完成，请检查健康权限后重试。",
   "syncDone": "同步完成",
-  "healthPrivacy": "体重会与 Apple 健康或 Health Connect 双向同步。训练记录只保存在应用内。",
+  "healthPrivacy": "体重会与 Apple 健康或 Health Connect 双向同步。完成的训练会以力量训练的形式保存（仅含时间），组数和重量只保存在应用内。",
   "syncHelp": "同步会导入可用的体重记录，并导出你在这里记录的体重。导入的记录仍由其来源管理。如果拒绝读取权限，HealthKit 可能会隐藏记录。",
   "theme": "主题",
   "dark": "深色",

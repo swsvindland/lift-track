@@ -10,6 +10,7 @@ import { useExercises } from "@/lib/exercise-store";
 import { adviceText, duration, rirText } from "@/lib/format";
 import { isDeloadWeek, programDetail, swapInSession, weekRir } from "@/lib/programs";
 import { stopRest } from "@/lib/rest-timer";
+import { syncHealthSoon } from "@/lib/health-schedule";
 import { useStore } from "@/lib/store";
 import {
   activeWorkout,
@@ -90,12 +91,14 @@ export function WorkoutScreen({ workoutId }: { workoutId?: number }) {
   const finish = () => {
     if (editingPast) {
       write(() => tidyWorkout(detail.id));
+      void syncHealthSoon();
       router.back();
       return;
     }
     const done = () => {
       const id = write(() => finishWorkout(detail.id));
       stopRest();
+      if (id) void syncHealthSoon();
       if (id)
         router.replace({ pathname: "/session/[id]", params: { id: String(id), finished: "1" } });
       else router.back();

@@ -23,7 +23,7 @@
   "healthUnavailable": "Health sync requires a native development build and a supported health provider.",
   "syncFailed": "Sync did not finish. Check health permissions and try again.",
   "syncDone": "Sync complete",
-  "healthPrivacy": "Body weight syncs both ways with Apple Health or Health Connect. Workouts stay in the app.",
+  "healthPrivacy": "Body weight syncs both ways with Apple Health or Health Connect. Finished workouts are saved there as strength training, with their times only; sets and loads stay in the app.",
   "syncHelp": "Sync imports available body weights and exports the ones you log here. Imported records remain managed by their source. HealthKit may hide records if read access is denied.",
   "theme": "Theme",
   "dark": "Dark",
