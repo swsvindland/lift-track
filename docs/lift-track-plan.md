@@ -102,6 +102,19 @@ This fork is from Body, which is older than Macros. Port these from `../macro-tr
 | 5. On-device AI              | Say/type a workout, program import, constraint parsing                                                                                                                | Faster than manual on a timed test set, with no network use                      |
 | Later                        | Apple Watch / Wear OS logging, exercise media, cardio, Vector Macros energy sharing via Health                                                                        | —                                                                                |
 
+## Status (September 26, 2026)
+
+Stages 0–3 are built on `lift/foundation`:
+
+- Identity and exercise library
+- Logger and rest timer
+- Programs with progression and feedback-driven volume ([docs/progression.md](progression.md))
+- Progress analytics
+
+The Progress tab replaced a History tab; history opens from Progress.
+
+Next: stage 4 native polish, then backups and stage 5 on-device AI.
+
 ## Decisions (September 26, 2026)
 
 - Public name **Vector Lift**, home-screen label **Lift**.

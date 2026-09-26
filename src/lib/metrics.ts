@@ -45,3 +45,10 @@ export function weightTrend(entries: { measuredAt: string; weightKg: number }[])
       return { day, raw, trend };
     });
 }
+export function shortDay(day: string, language: string, weekday = false) {
+  return new Date(`${day}T12:00:00`).toLocaleDateString(language === "zh" ? "zh-CN" : language, {
+    ...(weekday ? { weekday: "short" as const } : {}),
+    month: "short",
+    day: "numeric",
+  });
+}

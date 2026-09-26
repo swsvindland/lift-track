@@ -4,6 +4,7 @@ import { SystemButton } from "@/components/system";
 import { Screen } from "@/components/ui";
 import { useStore } from "@/lib/store";
 import { useWeightLog } from "./use-weight-log";
+import { WeightChart } from "@/components/progress/weight-chart";
 import { WeightForm } from "./weight-form";
 import { MeasurementHistory } from "./measurement-history";
 
@@ -25,6 +26,7 @@ export function WeightLog() {
             contentStyle: { backgroundColor: background },
           }}
         />
+        <WeightChart />
         <SystemButton onPress={() => log.launch(null)}>
           {t("add")} · {t("weight")}
         </SystemButton>

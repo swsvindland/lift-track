@@ -154,6 +154,7 @@ export function finishedWorkouts(limit = 50, before?: string): WorkoutSummary[] 
 export type Performance = {
   workoutId: number;
   startedAt: string;
+  bodyWeightKg: number | null;
   block: WorkoutExercise;
   sets: SetRow[];
 };
@@ -164,7 +165,11 @@ export function exerciseHistory(
   options: { limit?: number; excludeWorkout?: number } = {}
 ): Performance[] {
   const blocks = db
-    .select({ block: workoutExercises, startedAt: workouts.startedAt })
+    .select({
+      block: workoutExercises,
+      startedAt: workouts.startedAt,
+      bodyWeightKg: workouts.bodyWeightKg,
+    })
     .from(workoutExercises)
     .innerJoin(workouts, eq(workouts.id, workoutExercises.workoutId))
     .where(and(eq(workoutExercises.exerciseId, exerciseId), isNotNull(workouts.endedAt)))
@@ -189,9 +194,10 @@ export function exerciseHistory(
     .orderBy(asc(sets.position))
     .all();
   return blocks
-    .map(({ block, startedAt }) => ({
+    .map(({ block, startedAt, bodyWeightKg }) => ({
       workoutId: block.workoutId,
       startedAt,
+      bodyWeightKg,
       block,
       sets: rows.filter((r) => r.workoutExerciseId === block.id),
     }))

@@ -81,7 +81,15 @@ function lift() {
     "./strength": strength,
     "./workouts": workouts,
   });
+  const analytics = load("src/lib/analytics.ts", {
+    "@/db": { db, ...schema },
+    "./metrics": metrics,
+    "./strength": strength,
+    "./volume": volume,
+    "./workouts": workouts,
+  });
   return {
+    analytics,
     db,
     sqlite,
     schema,

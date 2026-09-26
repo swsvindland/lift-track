@@ -19,9 +19,9 @@ export default function TabsLayout() {
         <NativeTabs.Trigger.Label>Plan</NativeTabs.Trigger.Label>
         <NativeTabs.Trigger.Icon sf="calendar.day.timeline.left" md="view_timeline" />
       </NativeTabs.Trigger>
-      <NativeTabs.Trigger name="history" contentStyle={{ backgroundColor: background }}>
-        <NativeTabs.Trigger.Label>History</NativeTabs.Trigger.Label>
-        <NativeTabs.Trigger.Icon sf="clock.arrow.circlepath" md="history" />
+      <NativeTabs.Trigger name="progress" contentStyle={{ backgroundColor: background }}>
+        <NativeTabs.Trigger.Label>Progress</NativeTabs.Trigger.Label>
+        <NativeTabs.Trigger.Icon sf="chart.xyaxis.line" md="monitoring" />
       </NativeTabs.Trigger>
       <NativeTabs.Trigger name="library" contentStyle={{ backgroundColor: background }}>
         <NativeTabs.Trigger.Label>Exercises</NativeTabs.Trigger.Label>

@@ -13,7 +13,7 @@ import { Screen } from "@/components/ui";
 import { MuscleFeedback } from "./muscle-feedback";
 import { write, useQuery } from "@/lib/data";
 import { useExercises } from "@/lib/exercise-store";
-import { dayLabel, duration, loadText, setText, totalText } from "@/lib/format";
+import { dayLabel, duration, estimateText, loadText, setText, totalText } from "@/lib/format";
 import { useStore } from "@/lib/store";
 import { countsAsWork } from "@/lib/strength";
 import {
@@ -38,6 +38,8 @@ export function SessionScreen({ id, finished }: { id: number; finished: boolean 
   const work = detail.exercises.flatMap((b) => b.sets).filter((s) => countsAsWork(s.kind));
   const volume = work.reduce((sum, s) => sum + (s.weightKg ?? 0) * (s.reps ?? 0), 0);
   const title = detail.name || "Workout";
+  const show = (kind: "e1rm" | "weight", kg: number) =>
+    kind === "e1rm" ? estimateText(kg, units) : loadText(kg, units);
   return (
     <Screen title={title} nativeHeader>
       <Stack.Screen
@@ -76,7 +78,7 @@ export function SessionScreen({ id, finished }: { id: number; finished: boolean 
           {records.map((r) => (
             <Text key={`${r.exerciseId}-${r.kind}`} className="text-sm">
               {byId(r.exerciseId).name}: {r.kind === "e1rm" ? "est. 1RM" : "heaviest"}{" "}
-              {loadText(r.valueKg, units)} (was {loadText(r.previousKg, units)})
+              {show(r.kind, r.valueKg)} (was {show(r.kind, r.previousKg)})
             </Text>
           ))}
         </SystemPanel>

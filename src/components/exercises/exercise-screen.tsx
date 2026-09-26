@@ -8,12 +8,14 @@ import { useQuery } from "@/lib/data";
 import { equipmentLabels, muscleLabels } from "@/lib/exercises";
 import type { Muscle } from "@/lib/exercises/types";
 import { archiveCustomExercise, saveExerciseSetting, useExercises } from "@/lib/exercise-store";
-import { dayLabel, loadText, setText } from "@/lib/format";
+import { dayLabel, estimateText, setText } from "@/lib/format";
 import { defaultRest, formatClock } from "@/lib/rest-timer";
 import { useStore } from "@/lib/store";
 import { countsAsWork, e1rm } from "@/lib/strength";
 import { exerciseHistory } from "@/lib/workouts";
 import { CustomExerciseEditor } from "./custom-exercise-editor";
+import { StrengthChart } from "@/components/progress/strength-chart";
+import { strengthSeries } from "@/lib/analytics";
 
 const restChoices = ["default", "60", "90", "120", "150", "180", "240", "300"] as const;
 
@@ -34,6 +36,7 @@ export function ExerciseScreen({ id }: { id: string }) {
       const value = e1rm(s.weightKg ?? 0, s.reps ?? 0, s.rir);
       return value > (top?.value ?? 0) ? { value, day: p.startedAt } : top;
     }, null);
+  const strength = useQuery(() => strengthSeries(exercise), [exercise]);
   const muscles = Object.entries(exercise.muscles) as [Muscle, number][];
   const rest = setting?.restSeconds ? String(setting.restSeconds) : "default";
 
@@ -65,10 +68,11 @@ export function ExerciseScreen({ id }: { id: string }) {
       </View>
 
       {best && (
-        <SystemPanel className="gap-1">
-          <SystemLabel>Best estimated 1RM</SystemLabel>
-          <Text className="font-mono text-2xl">{loadText(best.value, units)}</Text>
-          <Text className="text-sm text-muted">{dayLabel(best.day, locale)}</Text>
+        <SystemPanel className="gap-3">
+          <StrengthChart series={strength} name={exercise.name} />
+          <Text className="text-sm text-muted">
+            Best ever {estimateText(best.value, units)} · {dayLabel(best.day, locale)}
+          </Text>
         </SystemPanel>
       )}
 

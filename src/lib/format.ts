@@ -75,3 +75,11 @@ export const rirText = (rir: number) =>
 /** A total such as session volume, to the nearest whole unit. */
 export const totalText = (kg: number, units: Units) =>
   `${Math.round(fromKg(kg, units)).toLocaleString()} ${weightUnit(units)}`;
+
+/** An estimate, such as a 1RM, to the nearest whole unit: decimals would claim false precision. */
+export const estimateText = (kg: number, units: Units) =>
+  `${Math.round(fromKg(kg, units))} ${weightUnit(units)}`;
+
+/** Body weight to one decimal place. */
+export const weightText = (kg: number, units: Units) =>
+  `${Math.round(fromKg(kg, units) * 10) / 10} ${weightUnit(units)}`;

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Pressable, View } from "react-native";
-import { router } from "expo-router";
+import { router, Stack } from "expo-router";
+import { useThemeColor } from "heroui-native";
 import { SystemButton, SystemIcon, SystemLabel, SystemText as Text } from "@/components/system";
 import { Screen } from "@/components/ui";
 import { useQuery } from "@/lib/data";
@@ -14,6 +15,8 @@ export function HistoryScreen() {
   const { locale } = useStore();
   const { byId } = useExercises();
   const [limit, setLimit] = useState(40);
+  const background = useThemeColor("background");
+  const foreground = useThemeColor("foreground");
   const list = useQuery(() => {
     return finishedWorkouts(limit + 1);
   }, [limit]);
@@ -23,7 +26,17 @@ export function HistoryScreen() {
     weeks.set(key, [...(weeks.get(key) ?? []), w]);
   }
   return (
-    <Screen title="History">
+    <Screen title="History" nativeHeader>
+      <Stack.Screen
+        options={{
+          headerShown: true,
+          title: "All workouts",
+          headerBackButtonDisplayMode: "minimal",
+          headerStyle: { backgroundColor: background },
+          headerTintColor: foreground,
+          contentStyle: { backgroundColor: background },
+        }}
+      />
       {!list.length && (
         <Text className="py-8 text-center text-muted">Finished workouts show up here.</Text>
       )}

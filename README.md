@@ -19,7 +19,14 @@ Everything stays on the phone: no account, no server, no analytics and no networ
 - **Finish:**
   - Unchecked sets and untouched exercises are dropped, and an empty workout is discarded.
   - The summary shows time, sets, volume and new records (estimated 1RM or heaviest load, compared with earlier sessions).
-- **History:** workouts grouped by week. A workout can be opened, edited, repeated or deleted.
+- **Progress:**
+  - This week's workouts, sets and volume against last week.
+  - An 8-week heatmap of hard sets per muscle (secondary muscles count half); tap a square for its number.
+  - Estimated-1RM trends for your most-trained lifts. Two sessions on one day count as one point.
+  - Recent records.
+  - Body weight trend.
+  - Each exercise has a strength chart with 1W–All ranges and a press-and-drag readout, and the weight screen has a trend chart.
+  - All workouts (history by week) open from here, and any workout can be opened, edited, repeated or deleted.
 - **Exercises:**
   - 253 curated, rep-based exercises with primary and secondary muscles (secondary counts as half a set) across 17 muscles, including front, side and rear delts.
   - Search understands gym shorthand ("rdl", "db", "ohp") and one-letter typos.
@@ -37,7 +44,7 @@ Everything stays on the phone: no account, no server, no analytics and no networ
   - See [programs and progression](docs/progression.md).
 - **Body weight:** log it, or sync it both ways with Apple Health / Health Connect. It's recorded on each workout for bodyweight exercises.
 
-Progress charts, backups, the lock-screen rest timer and the on-device AI features are the next stages in the plan.
+Backups, the lock-screen rest timer, Health workouts and the on-device AI features are the next stages in the plan.
 
 ## Run
 
@@ -74,6 +81,7 @@ Tests run real SQLite through the production Drizzle driver. They cover:
 - library consistency
 - search and swaps
 - the full log → finish → repeat → PR flow
+- weekly volume buckets, strength series (bodyweight included), records
 - progression, the program builder and a program run week by week (see [programs and progression](docs/progression.md))
 - supersets, reorder and swap
 - weekly volume

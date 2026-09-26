@@ -14,7 +14,7 @@ import { write, useQuery } from "@/lib/data";
 import { muscleLabels } from "@/lib/exercises";
 import type { Muscle } from "@/lib/exercises/types";
 import { useExercises } from "@/lib/exercise-store";
-import { dayLabel, duration, loadText, rirText } from "@/lib/format";
+import { dayLabel, duration, rirText, weightText } from "@/lib/format";
 import { activeMeso, isDeloadWeek, nextSession, programDetail, weekRir } from "@/lib/programs";
 import { useStartSession } from "@/components/plan/use-start-session";
 import { useStore } from "@/lib/store";
@@ -191,7 +191,7 @@ export function TodayScreen() {
         <View className="gap-1">
           <SystemLabel>Body weight</SystemLabel>
           <Text className="text-lg font-semibold">
-            {weights[0] ? loadText(weights[0].weightKg, units) : "Add a weight"}
+            {weights[0] ? weightText(weights[0].weightKg, units) : "Add a weight"}
           </Text>
         </View>
         <SystemIcon name="chevron-forward" color="muted" />
