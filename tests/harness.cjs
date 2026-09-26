@@ -73,7 +73,29 @@ function lift() {
   const { library } = load("src/lib/exercises/library.ts");
   const exercises = load("src/lib/exercises/index.ts", { "./library": { library } });
   const volume = load("src/lib/volume.ts", { "./strength": strength });
-  return { db, sqlite, schema, metrics, strength, loads, workouts, library, exercises, volume };
+  const progression = load("src/lib/progression.ts", { "./loads": loads, "./strength": strength });
+  const builder = load("src/lib/program-builder.ts", { "./progression": progression });
+  const programs = load("src/lib/programs.ts", {
+    "@/db": { db, ...schema },
+    "./progression": progression,
+    "./strength": strength,
+    "./workouts": workouts,
+  });
+  return {
+    db,
+    sqlite,
+    schema,
+    metrics,
+    strength,
+    loads,
+    workouts,
+    library,
+    exercises,
+    volume,
+    progression,
+    builder,
+    programs,
+  };
 }
 
 module.exports = { load, database, schema, lift };

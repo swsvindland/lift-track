@@ -7,7 +7,8 @@ import { ExercisePicker } from "@/components/exercises/exercise-picker";
 import { write, useQuery } from "@/lib/data";
 import type { Exercise } from "@/lib/exercises";
 import { useExercises } from "@/lib/exercise-store";
-import { duration } from "@/lib/format";
+import { adviceText, duration, rirText } from "@/lib/format";
+import { isDeloadWeek, programDetail, swapInSession, weekRir } from "@/lib/programs";
 import { stopRest } from "@/lib/rest-timer";
 import { useStore } from "@/lib/store";
 import {
@@ -52,6 +53,16 @@ export function WorkoutScreen({ workoutId }: { workoutId?: number }) {
   }, [detail]);
 
   const editingPast = !!detail?.endedAt;
+  const program = useQuery(() => {
+    if (!detail?.mesoId) return undefined;
+    const meso = programDetail(detail.mesoId);
+    return meso
+      ? {
+          deload: isDeloadWeek(meso, detail.mesoWeek ?? 0),
+          rir: weekRir(meso, detail.mesoWeek ?? 0),
+        }
+      : undefined;
+  }, [detail?.mesoId, detail?.mesoWeek]);
   useEffect(() => {
     if (editingPast || !detail) return;
     const timer = setInterval(() => setTick((t) => t + 1), 30000);
@@ -109,8 +120,27 @@ export function WorkoutScreen({ workoutId }: { workoutId?: number }) {
   const pick = (exercise: Exercise) => {
     const replacing = picker?.replacing;
     setPicker(null);
-    if (replacing) write(() => replaceExercise(replacing, exercise));
-    else write(() => addExercise(detail.id, exercise));
+    if (!replacing) {
+      write(() => addExercise(detail.id, exercise));
+      return;
+    }
+    const block = detail.exercises.find((b) => b.id === replacing);
+    const context = { gym, bodyWeightKg: detail.bodyWeightKg };
+    if (block?.slotId == null || !detail.mesoId) {
+      write(() => replaceExercise(replacing, exercise));
+      return;
+    }
+    Alert.alert(`Swap to ${exercise.name}`, undefined, [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Just today",
+        onPress: () => write(() => swapInSession(replacing, exercise, false, context)),
+      },
+      {
+        text: "Rest of program",
+        onPress: () => write(() => swapInSession(replacing, exercise, true, context)),
+      },
+    ]);
   };
 
   const groups = detail.exercises.map((b) => b.supersetGroup);
@@ -126,7 +156,14 @@ export function WorkoutScreen({ workoutId }: { workoutId?: number }) {
           {detail.name || "Workout"}
         </Text>
         <Text className="font-mono text-xs text-muted">
-          {editingPast ? "Editing" : duration(detail.startedAt)}
+          {[
+            program
+              ? `${program.deload ? "Deload" : `Week ${(detail.mesoWeek ?? 0) + 1}`} · ${rirText(program.rir)}`
+              : "",
+            editingPast ? "Editing" : duration(detail.startedAt),
+          ]
+            .filter(Boolean)
+            .join(" · ")}
         </Text>
       </View>
       <ActionMenu
@@ -214,6 +251,12 @@ export function WorkoutScreen({ workoutId }: { workoutId?: number }) {
               isLast={index === detail.exercises.length - 1}
               restAfter={!inGroup || groups[index + 1] !== block.supersetGroup}
               onSwap={() => setPicker({ replacing: block.id })}
+              advice={adviceText(block.advice, units)}
+              nextName={
+                detail.exercises[index + 1]
+                  ? byId(detail.exercises[index + 1].exerciseId).name
+                  : undefined
+              }
               onUndo={showUndo}
             />
           );

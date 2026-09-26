@@ -14,7 +14,9 @@ import { write, useQuery } from "@/lib/data";
 import { muscleLabels } from "@/lib/exercises";
 import type { Muscle } from "@/lib/exercises/types";
 import { useExercises } from "@/lib/exercise-store";
-import { dayLabel, duration, loadText } from "@/lib/format";
+import { dayLabel, duration, loadText, rirText } from "@/lib/format";
+import { activeMeso, isDeloadWeek, nextSession, programDetail, weekRir } from "@/lib/programs";
+import { useStartSession } from "@/components/plan/use-start-session";
 import { useStore } from "@/lib/store";
 import { setsPerMuscle, weekStart } from "@/lib/volume";
 import {
@@ -56,7 +58,10 @@ export function TodayScreen() {
         return true;
       })
       .slice(0, 4);
-    return { open, openDetail, week, repeat };
+    const meso = activeMeso();
+    const program = meso ? programDetail(meso.id) : undefined;
+    const next = program ? nextSession(program) : undefined;
+    return { open, openDetail, week, repeat, program, next };
   }, []);
   useMinuteClock(!!data.open);
 
@@ -68,6 +73,7 @@ export function TodayScreen() {
   const openSets = data.openDetail?.exercises.flatMap((b) => b.sets) ?? [];
   const done = openSets.filter((s) => s.completedAt).length;
 
+  const startProgramSession = useStartSession();
   const begin = (from?: number) => {
     write(() => startWorkout({ gymId: activeGym(units).id, from }));
     router.push("/workout");
@@ -95,13 +101,35 @@ export function TodayScreen() {
             Resume
           </SystemButton>
         </SystemPanel>
+      ) : data.program && data.next ? (
+        <SystemPanel className="gap-3 bg-accent-soft">
+          <SystemLabel className="text-accent-soft-foreground">
+            {data.program.name} ·{" "}
+            {isDeloadWeek(data.program, data.next.week) ? "Deload" : `Week ${data.next.week + 1}`}
+          </SystemLabel>
+          <Text className="text-xl font-semibold">
+            {data.program.days.find((d) => d.id === data.next!.dayId)?.name}
+          </Text>
+          <Text className="text-muted">
+            {rirText(weekRir(data.program, data.next.week))} on every set
+          </Text>
+          <SystemButton
+            icon="play"
+            onPress={() => startProgramSession(data.program!, data.next!.week, data.next!.dayId)}
+          >
+            Start
+          </SystemButton>
+          <SystemButton variant="ghost" onPress={() => begin()}>
+            Empty workout instead
+          </SystemButton>
+        </SystemPanel>
       ) : (
         <SystemButton icon="add" onPress={() => begin()}>
           Start workout
         </SystemButton>
       )}
 
-      {!data.open && data.repeat.length > 0 && (
+      {!data.open && !data.program && data.repeat.length > 0 && (
         <View className="gap-2">
           <SystemLabel>Repeat</SystemLabel>
           {data.repeat.map((w) => (
@@ -144,7 +172,7 @@ export function TodayScreen() {
               <View className="flex-row justify-between">
                 <Text className="text-sm">{muscleLabels[muscle]}</Text>
                 <Text className="font-mono text-sm tabular-nums text-muted">
-                  {Math.round(sets * 10) / 10} sets
+                  {Math.round(sets * 10) / 10} {sets === 1 ? "set" : "sets"}
                 </Text>
               </View>
               <MiniBar value={sets} max={maxSets} />

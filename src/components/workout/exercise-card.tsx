@@ -35,6 +35,8 @@ export function ExerciseCard({
   restAfter,
   onSwap,
   onUndo,
+  advice,
+  nextName,
 }: {
   block: ExerciseBlock;
   exercise: Exercise;
@@ -49,6 +51,10 @@ export function ExerciseCard({
   restAfter: boolean;
   onSwap: () => void;
   onUndo: (message: string, undo: () => void) => void;
+  /** Why the targets are what they are, for program sessions. */
+  advice?: string;
+  /** The exercise after this one, named in the rest timer once this one is done. */
+  nextName?: string;
 }) {
   const bodyweight = exercise.load === "bodyweight";
   const assisted = exercise.load === "assisted";
@@ -78,7 +84,10 @@ export function ExerciseCard({
     }
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
     if (restAfter && row.kind !== "warmup")
-      startRest(restSeconds ?? defaultRest(exercise), `Next: ${exercise.name}`);
+      startRest(
+        restSeconds ?? defaultRest(exercise),
+        `Next: ${block.sets.some((s) => s.id !== row.id && !s.completedAt && s.kind !== "warmup") || !nextName ? exercise.name : nextName}`
+      );
   };
 
   return (
@@ -104,6 +113,7 @@ export function ExerciseCard({
               .join(", ")}{" "}
             · {block.repMin}–{block.repMax} reps
           </Text>
+          {!!advice && <Text className="text-sm text-accent-soft-foreground">{advice}</Text>}
         </Pressable>
         <ActionMenu
           accessibilityLabel={`${exercise.name} options`}

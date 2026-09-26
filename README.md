@@ -27,9 +27,17 @@ Everything stays on the phone: no account, no server, no analytics and no networ
   - Each exercise has a best e1RM, its history, favorite and avoid flags, and a rest length.
   - You can add custom exercises, which are archived rather than deleted.
 - **Gym & plates:** kg or lb plates you own, bar weight, dumbbell step and heaviest dumbbell, machine step, and the equipment the gym has. Swap suggestions only offer equipment the gym has and skip exercises marked Avoid.
+- **Programs (Plan tab):**
+  - Build a mesocycle from five questions: days a week, minutes, training age, weeks before the deload, and muscles to bring up. The builder uses your gym's equipment, favorites and Avoid list, and starts volume low. Edit anything before starting.
+  - Every set of a session is prescribed (load, reps, reps in reserve) from your last performance and the week's RIR target, rounded to loads your gym can make, with a one-line reason.
+  - After a session, one optional tap per muscle (Easy / Good / Hard / Too much / Hurt) sets next week's volume; without it, hitting your reps does.
+  - Deload week at the end.
+  - Skip or start any session from the week grid.
+  - Swaps apply for today or the rest of the program and keep a real prescription.
+  - See [programs and progression](docs/progression.md).
 - **Body weight:** log it, or sync it both ways with Apple Health / Health Connect. It's recorded on each workout for bodyweight exercises.
 
-Programs (mesocycles, progression, per-muscle volume autoregulation, deloads), Progress charts, backups and the on-device AI features are the next stages in the plan.
+Progress charts, backups, the lock-screen rest timer and the on-device AI features are the next stages in the plan.
 
 ## Run
 
@@ -66,6 +74,7 @@ Tests run real SQLite through the production Drizzle driver. They cover:
 - library consistency
 - search and swaps
 - the full log → finish → repeat → PR flow
+- progression, the program builder and a program run week by week (see [programs and progression](docs/progression.md))
 - supersets, reorder and swap
 - weekly volume
 - health sync

@@ -8,8 +8,9 @@ import { GymEditor } from "@/components/settings/gym-editor";
 import { useStore } from "@/lib/store";
 import { languages, type LanguagePreference } from "@/lib/translations";
 import { enableHealthSync, disableHealthSync } from "@/lib/health-schedule";
-import { useQuery } from "@/lib/data";
-import { activeGym } from "@/lib/workouts";
+import { useQuery, write } from "@/lib/data";
+import { activeGym, updateGym } from "@/lib/workouts";
+import { defaultGym } from "@/lib/loads";
 
 function Row({ label, value, onPress }: { label: string; value?: string; onPress: () => void }) {
   return (
@@ -93,7 +94,15 @@ export function SettingsScreen() {
           title={t("units")}
           values={["metric", "imperial"] as const}
           value={units}
-          onChange={(value) => preference("units", value)}
+          onChange={(value) => {
+            preference("units", value);
+            // Plates don't convert between kg and lb; a gym follows the unit you train in.
+            const unit = value === "metric" ? "kg" : "lb";
+            if (gym.unit !== unit) {
+              const { name: _name, equipment: _equipment, ...typical } = defaultGym(unit);
+              write(() => updateGym(gym.id, typical));
+            }
+          }}
           label={(value) => `${t(value)} · ${value === "metric" ? "kg" : "lb"}`}
         />
       </SystemPanel>

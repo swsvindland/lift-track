@@ -1,5 +1,6 @@
-import { index, integer, real, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { index, integer, real, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 import type { Equipment, Muscle, Pattern } from "@/lib/exercises/types";
+import type { Advice } from "@/lib/progression";
 
 export const weightEntries = sqliteTable("weight_entries", {
   id: integer("id").primaryKey({ autoIncrement: true }),
@@ -70,6 +71,83 @@ export const gyms = sqliteTable("gyms", {
 });
 export type Gym = typeof gyms.$inferSelect;
 
+/** A training block: accumulation weeks with falling reps in reserve, then a deload week. */
+export const mesocycles = sqliteTable("mesocycles", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  name: text("name").notNull(),
+  /** Reps in reserve per accumulation week; the deload week follows them. */
+  rir: text("rir", { mode: "json" }).$type<number[]>().notNull(),
+  deload: integer("deload", { mode: "boolean" }).notNull().default(true),
+  /** Progression method version, so later changes don't reinterpret old blocks. */
+  method: integer("method").notNull(),
+  status: text("status", { enum: ["active", "finished"] }).notNull(),
+  startedAt: text("started_at").notNull(),
+  endedAt: text("ended_at"),
+});
+export type Mesocycle = typeof mesocycles.$inferSelect;
+
+export const mesoDays = sqliteTable(
+  "meso_days",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    mesoId: integer("meso_id")
+      .notNull()
+      .references(() => mesocycles.id, { onDelete: "cascade" }),
+    position: integer("position").notNull(),
+    name: text("name").notNull(),
+  },
+  (t) => [index("meso_days_meso").on(t.mesoId)]
+);
+export type MesoDay = typeof mesoDays.$inferSelect;
+
+export const mesoSlots = sqliteTable(
+  "meso_slots",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    dayId: integer("day_id")
+      .notNull()
+      .references(() => mesoDays.id, { onDelete: "cascade" }),
+    position: integer("position").notNull(),
+    exerciseId: text("exercise_id").notNull(),
+    /** Working sets in the first week; later weeks adjust from feedback and performance. */
+    sets: integer("sets").notNull(),
+    repMin: integer("rep_min").notNull(),
+    repMax: integer("rep_max").notNull(),
+  },
+  (t) => [index("meso_slots_day").on(t.dayId)]
+);
+export type MesoSlot = typeof mesoSlots.$inferSelect;
+
+/** Sessions deliberately skipped, so the plan moves on without inventing a workout. */
+export const mesoSkips = sqliteTable("meso_skips", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  mesoId: integer("meso_id")
+    .notNull()
+    .references(() => mesocycles.id, { onDelete: "cascade" }),
+  week: integer("week").notNull(),
+  dayId: integer("day_id")
+    .notNull()
+    .references(() => mesoDays.id, { onDelete: "cascade" }),
+});
+
+export const feedbackRatings = ["easy", "good", "hard", "tooMuch", "pain"] as const;
+export type FeedbackRating = (typeof feedbackRatings)[number];
+
+/** How a muscle felt after a session; adjusts that day's sets next week. */
+export const muscleFeedback = sqliteTable(
+  "muscle_feedback",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    workoutId: integer("workout_id")
+      .notNull()
+      .references(() => workouts.id, { onDelete: "cascade" }),
+    muscle: text("muscle").$type<Muscle>().notNull(),
+    rating: text("rating").$type<FeedbackRating>().notNull(),
+  },
+  (t) => [uniqueIndex("muscle_feedback_workout_muscle").on(t.workoutId, t.muscle)]
+);
+export type MuscleFeedback = typeof muscleFeedback.$inferSelect;
+
 export const workouts = sqliteTable(
   "workouts",
   {
@@ -81,6 +159,11 @@ export const workouts = sqliteTable(
     gymId: integer("gym_id").references(() => gyms.id, { onDelete: "set null" }),
     /** Body weight at the time, for bodyweight and assisted exercises. */
     bodyWeightKg: real("body_weight_kg"),
+    /** Set when the workout is a session of a program; week 0 is the first. */
+    mesoId: integer("meso_id").references(() => mesocycles.id, { onDelete: "set null" }),
+    mesoWeek: integer("meso_week"),
+    mesoDayId: integer("meso_day_id").references(() => mesoDays.id, { onDelete: "set null" }),
+    deload: integer("deload", { mode: "boolean" }).notNull().default(false),
     note: text("note").notNull().default(""),
     updatedAt: integer("updated_at").notNull(),
   },
@@ -102,6 +185,10 @@ export const workoutExercises = sqliteTable(
     repMin: integer("rep_min").notNull(),
     repMax: integer("rep_max").notNull(),
     note: text("note").notNull().default(""),
+    /** The program slot this came from; null for exercises added on the day. */
+    slotId: integer("slot_id").references(() => mesoSlots.id, { onDelete: "set null" }),
+    /** Why the prescription is what it is, as structured data the screen formats. */
+    advice: text("advice", { mode: "json" }).$type<Advice>(),
   },
   (t) => [
     index("workout_exercises_workout").on(t.workoutId),
