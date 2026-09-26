@@ -1,6 +1,12 @@
 import { useMemo, useState } from "react";
 import { Pressable, ScrollView, View } from "react-native";
-import { Chip, SystemIcon, SystemLabel, SystemText as Text } from "@/components/system";
+import {
+  Chip,
+  SystemButton,
+  SystemIcon,
+  SystemLabel,
+  SystemText as Text,
+} from "@/components/system";
 import { Editor, SearchInput } from "@/components/ui";
 import { useQuery } from "@/lib/data";
 import {
@@ -14,6 +20,8 @@ import {
 import { muscles, type Equipment, type Muscle } from "@/lib/exercises/types";
 import { useExercises } from "@/lib/exercise-store";
 import { exerciseUsage } from "@/lib/workouts";
+import { describeExercise } from "@/lib/lift-ai";
+import { useModel } from "@/lib/use-model";
 
 const LIMIT = 60;
 
@@ -73,6 +81,10 @@ export function ExercisePicker({
 }) {
   const [query, setQuery] = useState("");
   const [muscle, setMuscle] = useState<Muscle | null>(null);
+  const [described, setDescribed] = useState<Exercise[] | null>(null);
+  const [asking, setAsking] = useState(false);
+  const [askError, setAskError] = useState("");
+  const model = useModel();
   const { all, settings, settingFor } = useExercises();
   const usage = useQuery(() => {
     return open ? exerciseUsage() : new Map();
@@ -100,7 +112,11 @@ export function ExercisePicker({
     <Editor title={title} open={open} close={close} compact>
       <SearchInput
         value={query}
-        onChange={setQuery}
+        onChange={(value) => {
+          setQuery(value);
+          setDescribed(null);
+          setAskError("");
+        }}
         placeholder="Search exercises"
         accessibilityLabel="Search exercises"
       />
@@ -148,10 +164,37 @@ export function ExercisePicker({
             {results.length - LIMIT} more · keep typing to narrow
           </Text>
         )}
-        {!results.length && (
-          <Text className="py-8 text-center text-muted">
-            No exercise matches. Add your own from the Exercises tab.
-          </Text>
+        {!results.length && !described && (
+          <View className="items-center gap-3 py-6">
+            <Text className="text-center text-muted">
+              No exercise matches. Add your own from the Exercises tab.
+            </Text>
+            {model.available && query.trim().split(/\s+/).length >= 2 && (
+              <SystemButton
+                variant="secondary"
+                icon="sparkles-outline"
+                isDisabled={asking}
+                onPress={() => {
+                  setAsking(true);
+                  describeExercise(query, all, model.generate!)
+                    .then(setDescribed)
+                    .catch((e) => {
+                      setDescribed(null);
+                      setAskError(e instanceof Error ? e.message : "");
+                    })
+                    .finally(() => setAsking(false));
+                }}
+              >
+                {asking ? "Thinking…" : "Find it from the description"}
+              </SystemButton>
+            )}
+            {!!askError && <Text className="text-center text-sm text-muted">{askError}</Text>}
+          </View>
+        )}
+        {!results.length &&
+          described?.map((e) => <ExerciseRow key={e.id} exercise={e} onPress={() => pick(e)} />)}
+        {!results.length && described?.length === 0 && (
+          <Text className="py-4 text-center text-muted">Nothing close. Try other words.</Text>
         )}
       </View>
     </Editor>

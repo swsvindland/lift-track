@@ -26,6 +26,7 @@ import {
 } from "@/lib/workouts";
 import { ExerciseCard } from "./exercise-card";
 import { RestBar } from "./rest-bar";
+import { DescribeSheet } from "./describe-sheet";
 
 type Toast = { message: string; undo: () => void };
 
@@ -35,6 +36,7 @@ export function WorkoutScreen({ workoutId }: { workoutId?: number }) {
   const { byId, settingFor } = useExercises();
   const [picker, setPicker] = useState<{ replacing?: number } | null>(null);
   const [renaming, setRenaming] = useState<string | null>(null);
+  const [describing, setDescribing] = useState(false);
   const [toast, setToast] = useState<Toast | null>(null);
   const [, setTick] = useState(0);
   const toastTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
@@ -269,9 +271,24 @@ export function WorkoutScreen({ workoutId }: { workoutId?: number }) {
             Add your first exercise. Sets fill in from last time.
           </Text>
         )}
-        <SystemButton variant="secondary" icon="add" onPress={() => setPicker({})}>
-          Add exercise
-        </SystemButton>
+        <View className="flex-row gap-2">
+          <SystemButton
+            variant="secondary"
+            icon="add"
+            className="flex-1"
+            onPress={() => setPicker({})}
+          >
+            Add exercise
+          </SystemButton>
+          <SystemButton
+            variant="secondary"
+            icon="mic-outline"
+            className="flex-1"
+            onPress={() => setDescribing(true)}
+          >
+            Type or say
+          </SystemButton>
+        </View>
       </Screen>
       <ExercisePicker
         open={!!picker}
@@ -285,6 +302,7 @@ export function WorkoutScreen({ workoutId }: { workoutId?: number }) {
         }
         equipment={gym?.equipment}
       />
+      <DescribeSheet open={describing} close={() => setDescribing(false)} workoutId={detail.id} />
       <Editor
         title="Rename workout"
         open={renaming !== null}

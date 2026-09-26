@@ -708,3 +708,33 @@ export function workoutRecords(detail: WorkoutDetail): PersonalRecord[] {
   }
   return records;
 }
+
+/** Adds an exercise whose sets were already done, as described in words: all checked off. */
+export function addLoggedExercise(
+  workoutId: number,
+  exercise: { id: string; reps: readonly [number, number] },
+  done: { weightKg: number | null; reps: number; rir: number | null }[]
+) {
+  return db.transaction(() => {
+    const blockId = addExercise(workoutId, exercise, done.length);
+    const rows = db
+      .select()
+      .from(sets)
+      .where(eq(sets.workoutExerciseId, blockId))
+      .orderBy(asc(sets.position))
+      .all();
+    rows.forEach((row, i) =>
+      db
+        .update(sets)
+        .set({
+          weightKg: done[i].weightKg ?? 0,
+          reps: done[i].reps,
+          rir: done[i].rir,
+          completedAt: now(),
+        })
+        .where(eq(sets.id, row.id))
+        .run()
+    );
+    return blockId;
+  });
+}

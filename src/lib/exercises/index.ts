@@ -115,7 +115,7 @@ const synonyms: Record<string, string> = {
 const stem = (word: string) =>
   word.length > 4 && word.endsWith("es") && !word.endsWith("ses")
     ? word.slice(0, -2)
-    : word.length > 3 && word.endsWith("s") && !word.endsWith("ss")
+    : word.length >= 3 && word.endsWith("s") && !word.endsWith("ss")
       ? word.slice(0, -1)
       : word;
 const words = (text: string) =>
@@ -236,4 +236,66 @@ export function substitutes(
     .sort((a, b) => b.score - a.score)
     .slice(0, options.limit ?? 12)
     .map((s) => s.other);
+}
+
+/** What lifters mean by the bare name of a lift, keyed by its normalized words. */
+export const canonical: Record<string, string> = {
+  bench: "barbell-bench-press",
+  "bench press": "barbell-bench-press",
+  "incline bench": "barbell-incline-bench-press",
+  squat: "barbell-back-squat",
+  "back squat": "barbell-back-squat",
+  deadlift: "conventional-deadlift",
+  row: "barbell-row",
+  "overhead press": "barbell-overhead-press",
+  "military press": "barbell-overhead-press",
+  "shoulder press": "db-shoulder-press",
+  curl: "db-curl",
+  dip: "chest-dip",
+  "pull up": "pull-up",
+  "chin up": "chin-up",
+  "push up": "push-up",
+  "hip thrust": "barbell-hip-thrust",
+  "calf raise": "standing-calf-raise",
+  shrug: "barbell-shrug",
+  "skull crusher": "ez-bar-skull-crusher",
+};
+
+/**
+ * The library exercise a free-text name most likely means ("incline db press", "RDL",
+ * "lat pulldown wide"). Confident when every word of the name matched the exercise's own name or
+ * aliases; otherwise the best guess is offered for the person to confirm.
+ */
+export function matchExercise(
+  exercises: Exercise[],
+  name: string,
+  boost?: (exercise: Exercise) => number
+): { exercise: Exercise | undefined; confident: boolean } {
+  const terms = words(name).filter((t) => !["with", "the", "and", "on", "a"].includes(t));
+  if (!terms.length) return { exercise: undefined, confident: false };
+  // A bare "bench" or "squat" means the classic barbell lift, unless history says otherwise.
+  const classic = exercises.find((e) => e.id === canonical[terms.join(" ")]);
+  if (
+    classic &&
+    !exercises.some(
+      (e) =>
+        e !== classic &&
+        (boost?.(e) ?? 0) > (boost?.(classic) ?? 0) &&
+        searchExercises([e], name).length
+    )
+  )
+    return { exercise: classic, confident: true };
+  const covered = (exercise: Exercise) => {
+    const own = [...words(exercise.name), ...(exercise.aliases ?? []).flatMap(words)];
+    return terms.every((t) => own.some((w) => w === t || w.startsWith(t) || nearly(w, t)));
+  };
+  // Drop words from the end until something matches: "bench press heavy day" still finds bench.
+  for (let n = terms.length; n > 0; n--) {
+    const found = searchExercises(exercises, terms.slice(0, n).join(" "), boost);
+    if (found.length) {
+      const confident = n === terms.length && covered(found[0]);
+      return { exercise: found[0], confident };
+    }
+  }
+  return { exercise: undefined, confident: false };
 }

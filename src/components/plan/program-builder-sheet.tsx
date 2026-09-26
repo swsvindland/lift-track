@@ -2,9 +2,11 @@ import { useState } from "react";
 import { View } from "react-native";
 import { router } from "expo-router";
 import { Chip, SystemButton, SystemLabel, SystemText as Text } from "@/components/system";
-import { Choices, Editor } from "@/components/ui";
-import { muscleLabels } from "@/lib/exercises";
-import { muscles, type Muscle } from "@/lib/exercises/types";
+import { Choices, Editor, Field } from "@/components/ui";
+import { equipmentLabels, matchExercise, muscleLabels, primaryMuscles } from "@/lib/exercises";
+import { muscles, type Equipment, type Muscle } from "@/lib/exercises/types";
+import { readBuilderHints } from "@/lib/lift-ai";
+import { useModel } from "@/lib/use-model";
 import { useExercises } from "@/lib/exercise-store";
 import { setPendingDraft } from "@/lib/draft-store";
 import { buildProgram, splits, type Experience } from "@/lib/program-builder";
@@ -36,6 +38,46 @@ function OpenBuilder({ open, close }: Props) {
   const [weeks, setWeeks] = useState<(typeof weekOptions)[number]>("5");
   const [experience, setExperience] = useState<Experience>("intermediate");
   const [priorities, setPriorities] = useState<Muscle[]>([]);
+  const [wish, setWish] = useState("");
+  const [reading, setReading] = useState(false);
+  const [kit, setKit] = useState<Equipment[] | null>(null);
+  const [avoid, setAvoid] = useState<{ label: string; ids: string[] }[]>([]);
+  const model = useModel();
+
+  /** Fills the answers from a sentence; what hurts is left out of this program only. */
+  const fillFromWords = async () => {
+    setReading(true);
+    try {
+      const hints = await readBuilderHints(wish, model.generate);
+      if (hints.days) setDays(String(hints.days) as (typeof dayOptions)[number]);
+      if (hints.minutes) setMinutes(String(hints.minutes) as (typeof minuteOptions)[number]);
+      if (hints.weeks) setWeeks(String(hints.weeks) as (typeof weekOptions)[number]);
+      if (hints.experience) setExperience(hints.experience);
+      if (hints.priorities.length) setPriorities(hints.priorities);
+      setKit(hints.equipment ?? null);
+      setAvoid(
+        hints.avoid.flatMap((phrase) => {
+          const { exercise } = matchExercise(all, phrase);
+          if (!exercise) return [];
+          // "overhead press" means the movement; "barbell overhead press" means that one exercise.
+          const general =
+            !/\b(barbell|bb|dumbbell|db|machine|cable|smith|ez|kettlebell|band)\b/i.test(phrase);
+          const ids = general
+            ? all
+                .filter(
+                  (e) =>
+                    e.pattern === exercise.pattern &&
+                    primaryMuscles(e).some((m) => exercise.muscles[m] === 1)
+                )
+                .map((e) => e.id)
+            : [exercise.id];
+          return [{ label: general ? phrase : exercise.name, ids }];
+        })
+      );
+    } finally {
+      setReading(false);
+    }
+  };
 
   const build = () => {
     const draft = buildProgram(
@@ -45,8 +87,21 @@ function OpenBuilder({ open, close }: Props) {
         weeks: Number(weeks),
         experience,
         priorities,
-        equipment: activeGym(units).equipment,
-        settings,
+        equipment: kit
+          ? activeGym(units).equipment.filter((e) => kit.includes(e))
+          : activeGym(units).equipment,
+        settings: [
+          ...settings,
+          ...avoid
+            .flatMap((a) => a.ids)
+            .map((exerciseId) => ({
+              exerciseId,
+              avoid: true,
+              favorite: false,
+              restSeconds: null,
+              note: "",
+            })),
+        ],
       },
       all
     );
@@ -62,6 +117,34 @@ function OpenBuilder({ open, close }: Props) {
       close={close}
       footer={<SystemButton onPress={build}>Build</SystemButton>}
     >
+      <View className="gap-2">
+        <Field
+          label="Describe what you want (optional)"
+          value={wish}
+          onChange={setWish}
+          placeholder="4 days, an hour, only dumbbells, bad left shoulder, bigger arms"
+          multiline
+        />
+        <SystemButton
+          variant="secondary"
+          icon={model.available ? "sparkles-outline" : "text-outline"}
+          isDisabled={reading || !wish.trim()}
+          onPress={() => void fillFromWords()}
+        >
+          {reading ? "Reading…" : "Fill in from this"}
+        </SystemButton>
+        {(kit || avoid.length > 0) && (
+          <Text className="text-sm text-muted">
+            {kit ? `Using only: ${kit.map((e) => equipmentLabels[e]).join(", ")}. ` : ""}
+            {avoid.length ? `Leaving out: ${avoid.map((a) => a.label).join(", ")}.` : ""}
+          </Text>
+        )}
+        {!model.available && (
+          <Text className="text-xs text-muted">
+            Without an on-device model, only days, minutes and weeks are read.
+          </Text>
+        )}
+      </View>
       <View className="gap-2">
         <SystemLabel>Days a week</SystemLabel>
         <Choices values={dayOptions} value={days} onChange={setDays} label={(d) => d} />

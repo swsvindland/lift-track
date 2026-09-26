@@ -29,6 +29,7 @@ import {
   type SessionCell,
 } from "@/lib/programs";
 import { ProgramBuilderSheet } from "./program-builder-sheet";
+import { ImportSheet } from "./import-sheet";
 import { useStartSession } from "./use-start-session";
 
 const weekLabel = (detail: { rir: number[]; deload: boolean }, week: number) =>
@@ -36,6 +37,7 @@ const weekLabel = (detail: { rir: number[]; deload: boolean }, week: number) =>
 
 export function PlanScreen() {
   const [building, setBuilding] = useState(false);
+  const [importing, setImporting] = useState(false);
   const begin = useStartSession();
   const data = useQuery(() => {
     const meso = activeMeso();
@@ -63,6 +65,13 @@ export function PlanScreen() {
             <SystemButton icon="sparkles-outline" onPress={() => setBuilding(true)}>
               Build a program
             </SystemButton>
+            <SystemButton
+              variant="secondary"
+              icon="document-text-outline"
+              onPress={() => setImporting(true)}
+            >
+              Import one you have
+            </SystemButton>
           </SystemPanel>
           {data.previous && (
             <SystemButton
@@ -75,6 +84,7 @@ export function PlanScreen() {
           )}
         </Screen>
         <ProgramBuilderSheet open={building} close={() => setBuilding(false)} />
+        <ImportSheet open={importing} close={() => setImporting(false)} />
       </>
     );
 
@@ -127,6 +137,12 @@ export function PlanScreen() {
                     label: "Build a new program",
                     icon: "sparkles-outline",
                     onPress: () => setBuilding(true),
+                  },
+                  {
+                    key: "import",
+                    label: "Import a program",
+                    icon: "document-text-outline",
+                    onPress: () => setImporting(true),
                   },
                   {
                     key: "end",
@@ -240,6 +256,7 @@ export function PlanScreen() {
         </View>
       </Screen>
       <ProgramBuilderSheet open={building} close={() => setBuilding(false)} />
+      <ImportSheet open={importing} close={() => setImporting(false)} />
     </>
   );
 }

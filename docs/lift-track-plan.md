@@ -119,7 +119,7 @@ Stages 0–4 are built on `lift/foundation`:
 
 The Progress tab replaced a History tab; history opens from Progress.
 
-Encrypted backup, restore with recovery, CSV export and erase are also built ([docs/backups.md](backups.md)). Next: stage 5 on-device AI.
+Encrypted backup, restore with recovery, CSV export and erase are also built ([docs/backups.md](backups.md)). Stage 5 on-device AI is built as well ([docs/ai.md](ai.md)); the model path still needs a real iPhone and Android phone.
 
 ## Decisions (September 26, 2026)
 
