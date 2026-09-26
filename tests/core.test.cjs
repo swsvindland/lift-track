@@ -31,41 +31,12 @@ const { dictionaries, languagePreference, resolveLanguage } = load("src/lib/tran
 const close = (a, b, epsilon = 1e-8) => assert.ok(Math.abs(a - b) < epsilon, `${a} ≠ ${b}`);
 
 test("units round-trip and reject partial numeric input", () => {
-  for (const unit of ["metric", "imperial", "stone"]) {
+  for (const unit of ["metric", "imperial"])
     close(metrics.toKg(metrics.fromKg(82.375, unit), unit), 82.375);
-    close(metrics.toCm(metrics.fromCm(181.2, unit), unit), 181.2);
-  }
-  close(metrics.toKg(14, "stone"), 88.90410452);
-  close(metrics.toCm(70, "imperial"), 177.8);
+  close(metrics.toKg(225, "imperial"), 102.05828325);
   assert.equal(metrics.parseNumber("75,25"), 75.25);
   for (const input of ["75kg", "1.2.3", "", "Infinity", "1e2", "-5", "1,234.5"])
     assert.ok(Number.isNaN(metrics.parseNumber(input)));
-});
-test("height uses feet and inches with precise conversion and rounding carry", () => {
-  const number = (value, digits = 1) =>
-    new Intl.NumberFormat("en-US", { maximumFractionDigits: digits }).format(value);
-  close(metrics.parseHeight("5", "11"), 180.34);
-  close(metrics.parseHeight("6", ""), 182.88);
-  close(metrics.parseHeight("5", "11,5"), 181.61);
-  close(metrics.parseHeight("0", "11"), 27.94);
-  assert.deepEqual(metrics.heightParts(180.34), { feet: 5, inches: 11 });
-  assert.deepEqual(metrics.heightParts(182.88), { feet: 6, inches: 0 });
-  for (const units of ["imperial", "stone"]) {
-    assert.equal(metrics.formatHeight(180.34, units, number), "5' 11\"");
-    assert.equal(metrics.formatHeight(181.61, units, number), "5' 11.5\"");
-    assert.equal(metrics.formatHeight(182.88, units, number), "6' 0\"");
-    assert.equal(metrics.formatHeight(182.879, units, number), "6' 0\"");
-  }
-  assert.equal(metrics.formatHeight(180.34, "metric", number), "180.3 cm");
-  for (const [feet, inches] of [
-    ["5.5", "1"],
-    ["5", "12"],
-    ["-1", "1"],
-    ["", ""],
-    ["5", "-1"],
-    ["5", "11in"],
-  ])
-    assert.ok(Number.isNaN(metrics.parseHeight(feet, inches)));
 });
 test("calendar validation and local dates avoid UTC shifts", () => {
   assert.equal(metrics.validDay("2024-02-29"), true);
@@ -89,18 +60,6 @@ test("trend averages same-day records, sorts history and handles gaps", () => {
   ]);
   close(steady[1].trend, 80);
   assert.deepEqual(metrics.weightTrend([]), []);
-});
-test("BMI, Navy equations, manual body fat and missing inputs", () => {
-  close(metrics.composition(80, 180, 20).bmi, 24.691358024691358);
-  close(metrics.composition(80, 180, 20).ffmi, 19.753086419753085);
-  const male = metrics.bodyFat({ neck: 40, abdomen: 90 }, 180, "male");
-  assert.ok(male > 18 && male < 19);
-  const female = metrics.bodyFat({ neck: 33, waist: 75, hips: 100 }, 165, "female");
-  close(female, 29.739407691790603);
-  assert.equal(metrics.bodyFat({ bodyFat: 24 }, undefined, "none"), 24);
-  assert.equal(metrics.bodyFat({ neck: 40 }, 180, "male"), null);
-  assert.equal(metrics.bodyFat({ neck: 40, abdomen: 30 }, 180, "male"), null);
-  assert.deepEqual(metrics.composition(undefined, undefined, null), { bmi: null, ffmi: null });
 });
 test("all 11 languages contain every interface string", () => {
   assert.equal(Object.keys(dictionaries).length, 11);
@@ -127,6 +86,7 @@ test("language follows the device by default and allows a persistent override", 
 });
 function database() {
   const sqlite = new DatabaseSync(":memory:");
+  sqlite.exec("PRAGMA foreign_keys = ON");
   for (const migration of readdirSync("drizzle")
     .filter((f) => f.endsWith(".sql"))
     .sort())
@@ -155,18 +115,6 @@ function database() {
   };
   return { sqlite, db: drizzle(client, { schema }) };
 }
-test("migration preserves old weight data and creates new storage", () => {
-  const sqlite = new DatabaseSync(":memory:");
-  const migrations = readdirSync("drizzle")
-    .filter((f) => f.endsWith(".sql"))
-    .sort();
-  for (const file of migrations.slice(0, 2)) sqlite.exec(readFileSync(`drizzle/${file}`, "utf8"));
-  sqlite.exec("INSERT INTO weight_entries (weight_kg, measured_at) VALUES (80.5, '2024-01-01')");
-  for (const file of migrations.slice(2)) sqlite.exec(readFileSync(`drizzle/${file}`, "utf8"));
-  assert.equal(sqlite.prepare("SELECT weight_kg FROM weight_entries").get().weight_kg, 80.5);
-  assert.equal(sqlite.prepare("SELECT count(*) AS n FROM photos").get().n, 0);
-  sqlite.close();
-});
 test("health sync is repeatable, updates exports and never resurrects deleted imports", async () => {
   const { db, sqlite } = database();
   const health = load("src/lib/health.ts", {
@@ -181,10 +129,7 @@ test("health sync is repeatable, updates exports and never resurrects deleted im
     .returning()
     .get();
   const records = new Map([
-    [
-      "external",
-      { id: "external", kind: "height", value: 180, measuredAt: "2024-01-02T12:00:00Z" },
-    ],
+    ["external", { id: "external", kind: "weight", value: 79, measuredAt: "2024-01-02T12:00:00Z" }],
   ]);
   let writes = 0;
   const adapter = {
@@ -202,8 +147,7 @@ test("health sync is repeatable, updates exports and never resurrects deleted im
   };
   assert.deepEqual(await health.syncHealth(adapter), { imported: 1, exported: 1 });
   assert.deepEqual(await health.syncHealth(adapter), { imported: 0, exported: 0 });
-  assert.equal(db.select().from(schema.weightEntries).all().length, 1);
-  assert.equal(db.select().from(schema.measurements).all().length, 1);
+  assert.equal(db.select().from(schema.weightEntries).all().length, 2);
   db.update(schema.weightEntries)
     .set({ weightKg: 81 })
     .where(eq(schema.weightEntries.id, local.id))
@@ -211,10 +155,16 @@ test("health sync is repeatable, updates exports and never resurrects deleted im
   await health.syncHealth(adapter);
   assert.equal(writes, 2);
   assert.equal(records.size, 2);
-  db.delete(schema.measurements).run();
-  records.set("external", { ...records.get("external"), value: 181 });
+  // A deleted import stays deleted even when its source changes.
+  const imported = db
+    .select()
+    .from(schema.weightEntries)
+    .all()
+    .find((w) => w.weightKg === 79);
+  db.delete(schema.weightEntries).where(eq(schema.weightEntries.id, imported.id)).run();
+  records.set("external", { ...records.get("external"), value: 78 });
   await health.syncHealth(adapter);
-  assert.equal(db.select().from(schema.measurements).all().length, 0);
+  assert.equal(db.select().from(schema.weightEntries).all().length, 1);
   db.delete(schema.weightEntries).run();
   await health.syncHealth(adapter);
   assert.equal(records.size, 1);
@@ -340,163 +290,61 @@ test("daily health schedule respects opt-in, due time, failures and opt-out", as
   sqlite.close();
 });
 
-test("dashboard ratio uses shoulder / waist and the 1.62 goal", () => {
-  const { shoulderWaistRatio, metricContext } = load("src/lib/metric-context.ts");
-  close(shoulderWaistRatio({ shoulders: 129.6, waist: 80 }), 1.62);
-  for (const values of [
-    undefined,
-    {},
-    { waist: 80 },
-    { shoulders: 120, waist: 0 },
-    { shoulders: Infinity, waist: 80 },
-  ])
-    assert.equal(shoulderWaistRatio(values), null);
-  assert.equal(metricContext("shoulderWaistRatio", 1.5, "none").label, "ratioBelowGoal");
-  assert.equal(metricContext("shoulderWaistRatio", 1.62, "none").tone, "success");
-  assert.equal(metricContext("shoulderWaistRatio", 1.8, "none").label, "ratioAboveGoal");
-  assert.equal(metricContext("bmi", 18.5, "none").tone, "success");
-  assert.equal(metricContext("bmi", 25, "none").label, "bmiElevated");
-  assert.equal(metricContext("bmi", 30, "none").tone, "danger");
-  assert.equal(metricContext("bodyFat", 25, "male").label, "fatHigh");
-  assert.equal(metricContext("bodyFat", 25, "female").label, "fatTypical");
-  assert.equal(metricContext("bodyFat", 25, "none").tone, "neutral");
-  assert.equal(metricContext("ffmi", 21, "male").label, "ffmiHigh");
-  assert.equal(metricContext("ffmi", 16, "female").label, "ffmiTypical");
-  assert.equal(metricContext("ffmi", null, "male").label, "metricMissing");
-});
-
-test("body exports follow platform support and handle edits, removed fields and retries", async () => {
-  for (const bodyWriteKinds of [["bodyFat"], ["waist", "bodyFat"]]) {
-    const { db, sqlite } = database();
-    const health = load("src/lib/health.ts", {
-      "expo-constants": { appOwnership: "standalone" },
-      "@/db": { db, ...schema },
-      "./health-native": {},
-      "./metrics": metrics,
-    });
-    const local = db
-      .insert(schema.measurements)
-      .values({
-        kind: "body",
-        values: { waist: 80, shoulders: 130, bodyFat: 20 },
-        measuredAt: "2024-01-01T12:00:00Z",
-        updatedAt: 1,
-      })
+test("finished workouts go to Health once, are rewritten when edited and removed when deleted", async () => {
+  const { db, sqlite } = database();
+  const health = load("src/lib/health.ts", {
+    "expo-constants": { appOwnership: "standalone" },
+    "@/db": { db, ...schema },
+    "./health-native": {},
+    "./metrics": metrics,
+  });
+  const insert = (values) =>
+    db
+      .insert(schema.workouts)
+      .values({ startedAt: "2026-09-01T10:00:00Z", updatedAt: 1, ...values })
       .returning()
       .get();
-    // A tape-only session must not export a calculated fat percentage.
-    db.insert(schema.measurements)
-      .values({
-        kind: "body",
-        values: { abdomen: 90, neck: 40 },
-        measuredAt: "2024-01-02T12:00:00Z",
-        updatedAt: 1,
-      })
-      .run();
-    const remote = new Map();
-    const adapter = {
-      bodyWriteKinds,
-      authorize: async () => {},
-      read: async () => [...remote.values()],
-      write: async (record) => {
-        remote.set(record.clientId, { ...record, id: record.clientId });
-        return record.clientId;
-      },
-      remove: async (_, id) => {
-        remote.delete(id);
-      },
-    };
-    assert.equal((await health.syncHealth(adapter)).exported, bodyWriteKinds.length);
-    assert.equal((await health.syncHealth(adapter)).exported, 0);
-    assert.equal(db.select().from(schema.measurements).all().length, 2);
-    db.update(schema.measurements)
-      .set({ values: { shoulders: 130, bodyFat: 21 }, updatedAt: 2 })
-      .where(eq(schema.measurements.id, local.id))
-      .run();
-    await health.syncHealth(adapter);
-    assert.equal(remote.size, 1);
-    assert.equal([...remote.values()][0].value, 21);
-    db.delete(schema.measurements).run();
-    await health.syncHealth(adapter);
-    assert.equal(remote.size, 0);
-    sqlite.close();
-  }
-});
-
-test("HealthKit exports waist in centimeters and body fat as a fraction", async () => {
-  const writes = [];
-  let permission;
-  const hk = {
-    isHealthDataAvailable: () => true,
-    requestAuthorization: async (value) => {
-      permission = value;
+  const done = insert({ name: "Upper A", endedAt: "2026-09-01T11:00:00Z" });
+  insert({ name: "Open", endedAt: null });
+  const remote = new Map();
+  const removed = [];
+  let access = { weightRead: true, weightWrite: true, workoutWrite: true };
+  const adapter = {
+    authorize: async () => access,
+    read: async () => [],
+    write: async (r) => r.clientId,
+    remove: async () => {},
+    writeWorkout: async (w) => {
+      const id = `hk-${remote.size + removed.length}`;
+      remote.set(id, w);
+      return id;
     },
-    authorizationStatusFor: () => 2,
-    AuthorizationStatus: { sharingAuthorized: 2 },
-    saveQuantitySample: async (...args) => {
-      writes.push(args);
-      return { uuid: "saved" };
+    removeWorkout: async (id) => {
+      remote.delete(id);
+      removed.push(id);
     },
   };
-  const { getHealthAdapter } = load("src/lib/health-native.ios.ts", {
-    "@kingstinct/react-native-healthkit": hk,
-  });
-  const adapter = await getHealthAdapter();
-  await adapter.authorize();
-  assert.ok(permission.toShare.includes("HKQuantityTypeIdentifierWaistCircumference"));
-  assert.equal(permission.toRead.length, 2);
-  for (const [kind, value] of [
-    ["waist", 80],
-    ["bodyFat", 20],
-  ])
-    await adapter.write({
-      kind,
-      value,
-      measuredAt: "2024-01-01T12:00:00Z",
-      clientId: kind,
-      version: 1,
-    });
-  assert.deepEqual(
-    writes.map((args) => args.slice(0, 3)),
-    [
-      ["HKQuantityTypeIdentifierWaistCircumference", "cm", 80],
-      ["HKQuantityTypeIdentifierBodyFatPercentage", "%", 0.2],
-    ]
-  );
-});
-
-test("Health Connect requests body-fat write permission and uses percentage points", async () => {
-  let permissions;
-  let saved;
-  const hc = {
-    SdkAvailabilityStatus: { SDK_AVAILABLE: 3 },
-    getSdkStatus: async () => 3,
-    initialize: async () => true,
-    requestPermission: async (value) => {
-      if (value.length > 1) permissions = value;
-      return value;
-    },
-    RecordingMethod: { RECORDING_METHOD_MANUAL_ENTRY: 3 },
-    insertRecords: async (records) => {
-      saved = records;
-      return ["saved"];
-    },
-  };
-  const { getHealthAdapter } = load("src/lib/health-native.android.ts", {
-    "react-native-health-connect": hc,
-  });
-  const adapter = await getHealthAdapter();
-  await adapter.authorize();
-  assert.ok(permissions.some((p) => p.recordType === "BodyFat" && p.accessType === "write"));
-  assert.ok(!permissions.some((p) => p.recordType === "BodyFat" && p.accessType === "read"));
-  await adapter.write({
-    kind: "bodyFat",
-    value: 20,
-    measuredAt: "2024-01-01T12:00:00Z",
-    clientId: "fat",
-    version: 1,
-  });
-  assert.equal(saved[0].recordType, "BodyFat");
-  assert.equal(saved[0].percentage, 20);
-  await assert.rejects(adapter.write({ kind: "waist", value: 80 }), /healthUnavailable/);
+  assert.deepEqual(await health.syncHealth(adapter), { imported: 0, exported: 1 });
+  assert.equal(remote.size, 1);
+  const [written] = remote.values();
+  assert.equal(written.title, "Upper A");
+  assert.equal(written.endedAt, "2026-09-01T11:00:00Z");
+  assert.equal((await health.syncHealth(adapter)).exported, 0, "no duplicates");
+  db.update(schema.workouts)
+    .set({ endedAt: "2026-09-01T11:15:00Z" })
+    .where(eq(schema.workouts.id, done.id))
+    .run();
+  await health.syncHealth(adapter);
+  assert.equal(remote.size, 1);
+  assert.equal([...remote.values()][0].endedAt, "2026-09-01T11:15:00Z");
+  assert.equal(removed.length, 1, "the old copy is removed");
+  db.delete(schema.workouts).where(eq(schema.workouts.id, done.id)).run();
+  await health.syncHealth(adapter);
+  assert.equal(remote.size, 0);
+  // Without workout permission nothing is written.
+  access = { weightRead: true, weightWrite: true, workoutWrite: false };
+  insert({ name: "Lower A", endedAt: "2026-09-02T11:00:00Z" });
+  await health.syncHealth(adapter);
+  assert.equal(remote.size, 0);
+  sqlite.close();
 });

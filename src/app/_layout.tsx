@@ -1,17 +1,55 @@
 import { useFonts } from "expo-font";
+import { Ionicons } from "@expo/vector-icons";
 import { useUniwind } from "uniwind";
-import type { JSX } from "react";
+import { useEffect, useState, type JSX } from "react";
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { HeroUINativeProvider } from "heroui-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
-import { ActivityIndicator, Text, View } from "react-native";
+import { ActivityIndicator, AppState, Pressable, Text, View } from "react-native";
 import { useMigrations } from "drizzle-orm/expo-sqlite/migrator";
 import migrations from "../../drizzle/migrations";
 import { StoreProvider } from "@/lib/store";
 import { db } from "@/db";
+import { shareDatabaseCopy } from "@/lib/data-files";
+import { prepareRestNotifications, settleRest } from "@/lib/rest-timer";
 
 import "../global.css";
+
+function MigrationError({ message }: { message: string }) {
+  const [sharing, setSharing] = useState(false);
+  const [shareError, setShareError] = useState("");
+  return (
+    <View className="flex-1 items-center justify-center gap-4 bg-background p-6">
+      <Text className="text-center text-base text-danger">Migration error: {message}</Text>
+      <Text className="text-center text-sm text-muted">
+        Your records were not changed. Save a copy to keep them safe.
+      </Text>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityState={{ disabled: sharing }}
+        disabled={sharing}
+        className="min-h-11 justify-center rounded-2xl bg-accent px-4 py-3"
+        onPress={() => {
+          setSharing(true);
+          setShareError("");
+          shareDatabaseCopy()
+            .catch((e) =>
+              setShareError(e instanceof Error ? e.message : "Could not share the database.")
+            )
+            .finally(() => setSharing(false));
+        }}
+      >
+        <Text className="text-base font-semibold text-accent-foreground">Share database copy</Text>
+      </Pressable>
+      {!!shareError && (
+        <Text accessibilityLiveRegion="polite" className="text-center text-sm text-danger">
+          {shareError}
+        </Text>
+      )}
+    </View>
+  );
+}
 
 function ThemedStatusBar() {
   const { theme } = useUniwind();
@@ -22,16 +60,19 @@ export default function RootLayout(): JSX.Element {
   const [fontsLoaded, fontError] = useFonts({
     Inter: require("../../assets/fonts/Inter.ttf"),
     IBMPlexMono: require("../../assets/fonts/IBMPlexMono-Regular.ttf"),
+    // Icon-only controls must not render blank on a cold start.
+    ...Ionicons.font,
   });
   const { success, error } = useMigrations(db, migrations);
+  useEffect(() => {
+    void prepareRestNotifications().catch(() => {});
+    const subscription = AppState.addEventListener("change", (state) => {
+      if (state === "active") settleRest();
+    });
+    return () => subscription.remove();
+  }, []);
 
-  if (error) {
-    return (
-      <View className="flex-1 items-center justify-center bg-background p-6">
-        <Text className="text-center text-base text-danger">Migration error: {error.message}</Text>
-      </View>
-    );
-  }
+  if (error) return <MigrationError message={error.message} />;
 
   if (!success || (!fontsLoaded && !fontError)) {
     return (
@@ -47,6 +88,8 @@ export default function RootLayout(): JSX.Element {
         <StoreProvider>
           <Stack screenOptions={{ headerShown: false }}>
             <Stack.Screen name="(tabs)" />
+            <Stack.Screen name="workout" options={{ presentation: "modal" }} />
+            <Stack.Screen name="start" options={{ presentation: "modal", animation: "none" }} />
           </Stack>
         </StoreProvider>
         <ThemedStatusBar />

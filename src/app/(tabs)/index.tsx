@@ -1,5 +1,5 @@
-import { WeightLog } from "@/components/measurements/weight-log";
+import { TodayScreen } from "@/components/today/today-screen";
 
-export default function Home() {
-  return <WeightLog />;
+export default function Today() {
+  return <TodayScreen />;
 }

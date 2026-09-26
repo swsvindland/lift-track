@@ -1,13 +1,26 @@
 import Constants from "expo-constants";
-import { eq } from "drizzle-orm";
-import { db, healthLinks, measurements, preferences, weightEntries } from "@/db";
+import { eq, isNotNull } from "drizzle-orm";
+import { db, healthLinks, preferences, weightEntries, workouts } from "@/db";
 import { getHealthAdapter } from "./health-native";
 import type { HealthAdapter, HealthKind, HealthRecord } from "./health-types";
 import { validDay, dayOf } from "./metrics";
 
 let running = false;
+let maintenance = false;
+
+/** Restore and erase hold this so no sync reads or writes records while they're replaced. */
+export async function withHealthPaused<T>(work: () => Promise<T>): Promise<T> {
+  if (running || maintenance) throw new Error("Wait for Health sync to finish, then try again.");
+  maintenance = true;
+  try {
+    return await work();
+  } finally {
+    maintenance = false;
+  }
+}
+
 export async function syncHealth(adapter?: HealthAdapter, interactive = true) {
-  if (running) throw new Error("syncing");
+  if (running || maintenance) throw new Error("syncing");
   if (!adapter && Constants.appOwnership === "expo") throw new Error("healthUnavailable");
   running = true;
   try {
@@ -17,7 +30,11 @@ export async function syncHealth(adapter?: HealthAdapter, interactive = true) {
     } catch {
       throw new Error("healthUnavailable");
     }
-    await provider.authorize(interactive);
+    const access = (await provider.authorize(interactive)) ?? {
+      weightRead: true,
+      weightWrite: true,
+      workoutWrite: true,
+    };
     let installation = db
       .select()
       .from(preferences)
@@ -27,7 +44,7 @@ export async function syncHealth(adapter?: HealthAdapter, interactive = true) {
       installation = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
       db.insert(preferences).values({ key: "installation", value: installation }).run();
     }
-    const prefix = `body-track:${installation}:`;
+    const prefix = `lift-track:${installation}:`;
     let imported = 0;
     let exported = 0;
     const localRecords = () => [
@@ -42,37 +59,12 @@ export async function syncHealth(adapter?: HealthAdapter, interactive = true) {
           measuredAt: w.measuredAt,
           version: w.updatedAt?.getTime() ?? w.createdAt?.getTime() ?? 1,
         })),
-      ...db
-        .select()
-        .from(measurements)
-        .all()
-        .filter((m) => m.kind === "height")
-        .map((m) => ({
-          id: m.id,
-          kind: "height" as const,
-          value: m.values.height,
-          measuredAt: m.measuredAt,
-          version: m.updatedAt,
-        })),
-      ...db
-        .select()
-        .from(measurements)
-        .all()
-        .filter((m) => m.kind === "body")
-        .flatMap((m) =>
-          (provider.bodyWriteKinds ?? []).flatMap((kind) => {
-            const value = m.values[kind];
-            return Number.isFinite(value) && value > 0 && value <= (kind === "bodyFat" ? 74.9 : 300)
-              ? [{ id: m.id, kind, value, measuredAt: m.measuredAt, version: m.updatedAt }]
-              : [];
-          })
-        ),
     ];
     const fingerprint = (record: { value: number; measuredAt: string }) =>
       `${record.value}:${record.measuredAt}`;
     const links = db.select().from(healthLinks).all();
     // Export before import. Persist each mapping immediately, so partial failures are safely retried.
-    for (const record of localRecords()) {
+    for (const record of access.weightWrite ? localRecords() : []) {
       if (
         links.some(
           (l) => l.localKind === record.kind && l.localId === record.id && l.origin === "health"
@@ -103,12 +95,7 @@ export async function syncHealth(adapter?: HealthAdapter, interactive = true) {
     }
     const current = localRecords();
     for (const link of links.filter((l) => l.origin === "local" && l.fingerprint !== "deleted")) {
-      if (
-        link.localKind !== "weight" &&
-        link.localKind !== "height" &&
-        !provider.bodyWriteKinds?.includes(link.localKind as "waist" | "bodyFat")
-      )
-        continue;
+      if (link.localKind !== "weight" || !access.weightWrite) continue;
       if (!current.some((r) => r.kind === link.localKind && r.id === link.localId)) {
         await provider.remove(link.localKind as HealthKind, link.remoteId);
         db.update(healthLinks)
@@ -117,10 +104,11 @@ export async function syncHealth(adapter?: HealthAdapter, interactive = true) {
           .run();
       }
     }
-    const external = await provider.read();
+    if (access.workoutWrite && provider.writeWorkout && provider.removeWorkout)
+      exported += await syncWorkouts(provider, prefix);
+    const external = access.weightRead ? await provider.read() : [];
     for (const record of external) {
-      // Body measurements are export-only; never turn them into height imports.
-      if (record.kind !== "weight" && record.kind !== "height") continue;
+      if (record.kind !== "weight") continue;
       if (record.clientId?.startsWith(prefix) || !validHealthRecord(record)) continue;
       const key = `health:${record.kind}:${record.id}`;
       const link = db.select().from(healthLinks).where(eq(healthLinks.key, key)).get();
@@ -128,29 +116,17 @@ export async function syncHealth(adapter?: HealthAdapter, interactive = true) {
       if (link?.fingerprint === hash) continue;
       db.transaction((tx) => {
         let localId = link?.localId;
-        if (record.kind === "weight") {
-          if (link)
-            tx.update(weightEntries)
-              .set({ weightKg: record.value, measuredAt: record.measuredAt, updatedAt: new Date() })
-              .where(eq(weightEntries.id, link.localId))
-              .run();
-          else
-            localId = tx
-              .insert(weightEntries)
-              .values({ weightKg: record.value, measuredAt: record.measuredAt })
-              .returning()
-              .get().id;
-        } else {
-          const data = {
-            kind: "height" as const,
-            measuredAt: record.measuredAt,
-            values: { height: record.value },
-            updatedAt: Date.now(),
-          };
-          if (link)
-            tx.update(measurements).set(data).where(eq(measurements.id, link.localId)).run();
-          else localId = tx.insert(measurements).values(data).returning().get().id;
-        }
+        if (link)
+          tx.update(weightEntries)
+            .set({ weightKg: record.value, measuredAt: record.measuredAt, updatedAt: new Date() })
+            .where(eq(weightEntries.id, link.localId))
+            .run();
+        else
+          localId = tx
+            .insert(weightEntries)
+            .values({ weightKg: record.value, measuredAt: record.measuredAt })
+            .returning()
+            .get().id;
         tx.insert(healthLinks)
           .values({
             key,
@@ -179,8 +155,62 @@ export function validHealthRecord(record: HealthRecord) {
   return (
     Number.isFinite(record.value) &&
     record.value > 0 &&
-    record.value <= (record.kind === "weight" ? 500 : 300) &&
+    record.value <= 500 &&
     Number.isFinite(Date.parse(record.measuredAt)) &&
     validDay(dayOf(record.measuredAt))
   );
+}
+
+/**
+ * Writes finished workouts as strength-training sessions. Health stores can't edit a workout,
+ * so a changed one is removed and written again; one deleted here is removed there.
+ */
+async function syncWorkouts(provider: HealthAdapter, prefix: string) {
+  const writeWorkout = provider.writeWorkout!;
+  const removeWorkout = provider.removeWorkout!;
+  let exported = 0;
+  const finished = db.select().from(workouts).where(isNotNull(workouts.endedAt)).all();
+  const links = db
+    .select()
+    .from(healthLinks)
+    .all()
+    .filter((l) => l.localKind === "workout" && l.origin === "local");
+  for (const w of finished) {
+    const key = `${prefix}workout:${w.id}`;
+    const hash = `${w.startedAt}|${w.endedAt}|${w.name}`;
+    // Matched by workout, not key: a restored workout keeps the Health copy it already has.
+    const link = links.find((l) => l.localId === w.id);
+    if (link?.fingerprint === hash) continue;
+    if (link && link.fingerprint !== "deleted") await removeWorkout(link.remoteId);
+    const remoteId = await writeWorkout({
+      clientId: key,
+      version: Math.max(w.updatedAt, Date.now()),
+      startedAt: w.startedAt,
+      endedAt: w.endedAt!,
+      title: w.name || "Strength training",
+    });
+    // A link from before a restore may carry another install's key.
+    if (link && link.key !== key) db.delete(healthLinks).where(eq(healthLinks.key, link.key)).run();
+    db.insert(healthLinks)
+      .values({
+        key,
+        localKind: "workout",
+        localId: w.id,
+        remoteId,
+        fingerprint: hash,
+        origin: "local",
+      })
+      .onConflictDoUpdate({ target: healthLinks.key, set: { remoteId, fingerprint: hash } })
+      .run();
+    exported++;
+  }
+  for (const link of links) {
+    if (link.fingerprint === "deleted" || finished.some((w) => w.id === link.localId)) continue;
+    await removeWorkout(link.remoteId);
+    db.update(healthLinks)
+      .set({ fingerprint: "deleted" })
+      .where(eq(healthLinks.key, link.key))
+      .run();
+  }
+  return exported;
 }

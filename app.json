@@ -1,11 +1,11 @@
 {
   "expo": {
-    "name": "VECTOR BODY",
-    "slug": "vector-body",
+    "name": "Vector Lift",
+    "slug": "lift-track",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "bodytrack",
+    "scheme": "lifttrack",
     "userInterfaceStyle": "automatic",
     "ios": {
       "icon": {
@@ -14,8 +14,9 @@
         "tinted": "./assets/images/icon-tinted.png"
       },
       "supportsTablet": false,
-      "bundleIdentifier": "dev.svindland.vector.body",
+      "bundleIdentifier": "dev.svindland.vector.lift",
       "infoPlist": {
+        "CFBundleDisplayName": "Lift",
         "ITSAppUsesNonExemptEncryption": false
       }
     },
@@ -29,12 +30,10 @@
       "permissions": [
         "android.permission.health.READ_WEIGHT",
         "android.permission.health.WRITE_WEIGHT",
-        "android.permission.health.READ_HEIGHT",
-        "android.permission.health.WRITE_HEIGHT",
-        "android.permission.health.WRITE_BODY_FAT",
-        "android.permission.health.READ_HEALTH_DATA_IN_BACKGROUND"
+        "android.permission.health.READ_HEALTH_DATA_IN_BACKGROUND",
+        "android.permission.health.WRITE_EXERCISE"
       ],
-      "package": "dev.svindland.vector.body"
+      "package": "dev.svindland.vector.lift"
     },
     "web": {
       "favicon": "./assets/images/favicon.png"
@@ -55,45 +54,52 @@
           }
         }
       ],
-      "expo-status-bar",
       [
         "expo-image-picker",
         {
-          "photosPermission": "Choose progress photos to save privately in VECTOR BODY.",
-          "cameraPermission": "Take progress photos to save privately in VECTOR BODY.",
+          "photosPermission": "Choose a photo of a training program to read it on this phone.",
+          "cameraPermission": "Photograph a training program to read it on this phone.",
           "microphonePermission": false
         }
       ],
+      "expo-status-bar",
       "expo-localization",
       [
         "@kingstinct/react-native-healthkit",
         {
           "background": false,
-          "NSHealthShareUsageDescription": "Import your weight and height into VECTOR BODY when you choose to sync.",
-          "NSHealthUpdateUsageDescription": "Save your VECTOR BODY weight, height, waist circumference and recorded body fat to Apple Health when you choose to sync."
+          "NSHealthShareUsageDescription": "Import your body weight into Vector Lift for bodyweight exercises when you choose to sync.",
+          "NSHealthUpdateUsageDescription": "Save the body weights you log and your finished workouts to Apple Health when you choose to sync."
         }
       ],
       "react-native-health-connect",
       "./plugins/with-health-rationale",
       [
+        "./plugins/with-kotlin-plugin-version",
+        {
+          "version": "2.2.21"
+        }
+      ],
+      [
         "expo-build-properties",
         {
           "android": {
-            "minSdkVersion": 26
+            "minSdkVersion": 26,
+            "kotlinVersion": "2.2.21"
           }
         }
       ],
-      "expo-background-task"
+      "expo-background-task",
+      "expo-live-activity",
+      "expo-quick-actions",
+      "expo-sharing"
     ],
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
     },
     "extra": {
-      "router": {},
-      "eas": {
-        "projectId": "f81cc066-e20b-4ef3-ba94-273f069fc935"
-      }
+      "router": {}
     }
   }
 }

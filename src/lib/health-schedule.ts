@@ -6,7 +6,7 @@ import { eq } from "drizzle-orm";
 import { db, preferences } from "@/db";
 import { syncHealth } from "./health";
 
-const TASK = "body-track-daily-health-sync";
+const TASK = "lift-track-daily-health-sync";
 const DAY = 24 * 60 * 60 * 1000;
 const get = (key: string) =>
   db.select().from(preferences).where(eq(preferences.key, key)).get()?.value;
@@ -33,6 +33,18 @@ export async function syncHealthIfDue() {
     if (error instanceof Error && error.message === "syncing") return true;
     set("healthSyncError", "syncFailed");
     return false;
+  }
+}
+
+/** After finishing a workout: send it to Health now rather than at the next daily sync. */
+export async function syncHealthSoon() {
+  if (get("healthSyncEnabled") !== "true") return;
+  try {
+    await syncHealth(undefined, false);
+    set("healthSyncError", "");
+  } catch (error) {
+    if (!(error instanceof Error && error.message === "syncing"))
+      set("healthSyncError", "syncFailed");
   }
 }
 

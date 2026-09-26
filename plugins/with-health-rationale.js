@@ -7,22 +7,22 @@ module.exports = function withHealthRationale(config) {
     const activity = config.modResults;
     if (activity.language !== "kt")
       throw new Error("Health rationale requires the Expo Kotlin activity.");
-    if (activity.contents.includes("bodyTrackHealthIntent")) return config;
+    if (activity.contents.includes("liftTrackHealthIntent")) return config;
     activity.contents = activity.contents.replace(
       "super.onCreate(null)",
-      "bodyTrackHealthIntent(intent)\n    super.onCreate(null)"
+      "liftTrackHealthIntent(intent)\n    super.onCreate(null)"
     );
     const methods = `
-  private fun bodyTrackHealthIntent(incoming: android.content.Intent?) {
+  private fun liftTrackHealthIntent(incoming: android.content.Intent?) {
     if (incoming?.action == "androidx.health.ACTION_SHOW_PERMISSIONS_RATIONALE" ||
         incoming?.action == "android.intent.action.VIEW_PERMISSION_USAGE") {
       incoming.action = android.content.Intent.ACTION_VIEW
-      incoming.data = android.net.Uri.parse("bodytrack://health-privacy")
+      incoming.data = android.net.Uri.parse("lifttrack://health-privacy")
     }
   }
 
   override fun onNewIntent(intent: android.content.Intent) {
-    bodyTrackHealthIntent(intent)
+    liftTrackHealthIntent(intent)
     super.onNewIntent(intent)
     setIntent(intent)
   }
