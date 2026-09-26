@@ -62,7 +62,7 @@ export function PlanScreen() {
               A block of weeks where effort rises, loads and reps are worked out for every set, and
               sets grow as you recover, then a lighter deload week.
             </Text>
-            <SystemButton icon="sparkles-outline" onPress={() => setBuilding(true)}>
+            <SystemButton icon="construct-outline" onPress={() => setBuilding(true)}>
               Build a program
             </SystemButton>
             <SystemButton
@@ -135,7 +135,7 @@ export function PlanScreen() {
                   {
                     key: "new",
                     label: "Build a new program",
-                    icon: "sparkles-outline",
+                    icon: "construct-outline",
                     onPress: () => setBuilding(true),
                   },
                   {

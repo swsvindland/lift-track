@@ -22,6 +22,7 @@ import { useExercises } from "@/lib/exercise-store";
 import { exerciseUsage } from "@/lib/workouts";
 import { describeExercise } from "@/lib/lift-ai";
 import { useModel } from "@/lib/use-model";
+import { AiMark } from "@/components/ai-mark";
 
 const LIMIT = 60;
 
@@ -172,7 +173,7 @@ export function ExercisePicker({
             {model.available && query.trim().split(/\s+/).length >= 2 && (
               <SystemButton
                 variant="secondary"
-                icon="sparkles-outline"
+                icon={<AiMark size={18} color="accent-soft-foreground" />}
                 isDisabled={asking}
                 onPress={() => {
                   setAsking(true);

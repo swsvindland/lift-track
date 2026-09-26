@@ -7,6 +7,7 @@ import { equipmentLabels, matchExercise, muscleLabels, primaryMuscles } from "@/
 import { muscles, type Equipment, type Muscle } from "@/lib/exercises/types";
 import { readBuilderHints } from "@/lib/lift-ai";
 import { useModel } from "@/lib/use-model";
+import { AiMark } from "@/components/ai-mark";
 import { useExercises } from "@/lib/exercise-store";
 import { setPendingDraft } from "@/lib/draft-store";
 import { buildProgram, splits, type Experience } from "@/lib/program-builder";
@@ -127,7 +128,9 @@ function OpenBuilder({ open, close }: Props) {
         />
         <SystemButton
           variant="secondary"
-          icon={model.available ? "sparkles-outline" : "text-outline"}
+          icon={
+            model.available ? <AiMark size={18} color="accent-soft-foreground" /> : "text-outline"
+          }
           isDisabled={reading || !wish.trim()}
           onPress={() => void fillFromWords()}
         >
