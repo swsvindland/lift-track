@@ -10,35 +10,35 @@ RP Hypertrophy and MacroFactor Workouts are the functional references: mesocycle
 
 **Speed is the product.** The same rule as Macros applies: judge every change by taps and seconds in the daily loop. Mid-set the user is sweaty, holding a phone in one hand, and may be wearing gloves. Targets:
 
-| Moment                        | Budget                                                             |
-| ----------------------------- | ------------------------------------------------------------------ |
-| Open app → first set in view  | 1 tap (Today opens on the next session; **Start**)                 |
-| Log a set done as prescribed  | 1 tap (the checkmark; the rest timer starts automatically)         |
-| Log a set that differed       | ≤ 3 taps (± steppers on weight/reps, prefilled from prescription)  |
-| Swap an exercise              | ≤ 3 taps (same-muscle, same-equipment suggestions first)           |
-| Post-session feedback         | ≤ 1 tap per muscle, skippable; sensible defaults if skipped        |
+| Moment                        | Budget                                                            |
+| ----------------------------- | ----------------------------------------------------------------- |
+| Open app → first set in view  | 1 tap (Today opens on the next session; **Start**)                |
+| Log a set done as prescribed  | 1 tap (the checkmark; the rest timer starts automatically)        |
+| Log a set that differed       | ≤ 3 taps (± steppers on weight/reps, prefilled from prescription) |
+| Swap an exercise              | ≤ 3 taps (same-muscle, same-equipment suggestions first)          |
+| Post-session feedback         | ≤ 1 tap per muscle, skippable; sensible defaults if skipped       |
 | Rest timer while phone locked | Live Activity / ongoing notification with time left and next set  |
 
 ## Launch features
 
-| Area | Initial scope | Important behavior |
-| --- | --- | --- |
-| Today | Next session of the active mesocycle, week/day position, **Start**; also a blank "freestyle" workout | Opening the app makes the next set obvious. A missed day slides forward. Nothing is skipped silently. |
-| Workout logger | Sets with prescribed weight × reps @ RIR, previous performance ghosted, one-tap complete, steppers, warm-up sets, notes, reorder, add/remove sets and exercises, supersets | Survives app kill and phone restart mid-workout. Every write can be undone. |
-| Set types | Straight, warm-up (not counted), drop set, myo-reps / rest-pause, to-failure flag | Only straight and top sets feed progression, unless we explicitly design otherwise. |
-| Rest timer | Auto-start per exercise type, ±15 s, lock-screen Live Activity (iOS) / ongoing notification (Android), haptic + sound at 0 | Local notifications only. |
-| Load math | Plate calculator per gym (bar weight, plates owned), dumbbell/machine increments per gym, kg/lb, bodyweight + added load | Recommendations round to loads you can actually make. |
-| Mesocycles | 4–6 accumulation weeks + deload. Templates (full body, upper/lower, PPL, bro split) or generated from days/week, session length, equipment, experience, muscle priorities | Editing mid-meso keeps history. You can end a meso early or extend it. |
-| Progression | Per-exercise rep range and weekly RIR target. The next load/reps come from the last performance (e1RM with reps-in-reserve). Increments you can't make fall back to adding reps. | Deterministic and versioned, with an explanation for each recommendation. No LLM in the loop. |
-| Volume autoregulation | Weekly sets per muscle start near a low productive volume and rise with good recovery and pump feedback. They hold or drop with soreness, joint pain or falling performance. Secondary muscles count as fractional sets. | Feedback is optional. Without it, performance trends drive the decision. |
-| Deloads | Planned final week (half the sets, lighter loads, higher RIR). An early deload is offered after repeated performance drops. | Offered, never forced. |
-| Exercise library | Bundled public-domain library (~800 movements) with primary/secondary muscles, equipment, mechanics and force; curated down to a clean set. Custom exercises. Favorites. | Media is text cues plus a muscle map at launch. See below. |
-| Substitutions | Same movement pattern and target muscles first, filtered by the gym's equipment and by exercises you've marked "avoid (joint pain)" | A swap can be for today only or for the rest of the meso. |
-| Gyms | One or more gym profiles (equipment available, plates, dumbbell range, machine increments) | Switching gym re-filters substitutions and re-rounds loads. |
-| Progress | Weekly sets per muscle against the plan, e1RM and best-set trends per exercise, PRs (1RM/e1RM/rep PRs), session volume and duration, muscle heatmap | Tapping a chart opens it with 1M–All ranges, as in Macros. |
-| History | Calendar of sessions, session detail, edit past sets, per-exercise history | Editing history recomputes future recommendations, not past ones. |
-| Health | Opt-in: write strength-training workouts (start, end, duration, estimated energy) to HealthKit/Health Connect; read body weight for bodyweight exercises | Inherited from the fork's health layer with stable IDs, so there are no duplicates or export loops. |
-| Data ownership | Encrypted backup/restore, CSV export of sets, erase all data | Ported from Vector Macros. |
+| Area                  | Initial scope                                                                                                                                                                                                            | Important behavior                                                                                    |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------- |
+| Today                 | Next session of the active mesocycle, week/day position, **Start**; also a blank "freestyle" workout                                                                                                                     | Opening the app makes the next set obvious. A missed day slides forward. Nothing is skipped silently. |
+| Workout logger        | Sets with prescribed weight × reps @ RIR, previous performance ghosted, one-tap complete, steppers, warm-up sets, notes, reorder, add/remove sets and exercises, supersets                                               | Survives app kill and phone restart mid-workout. Every write can be undone.                           |
+| Set types             | Straight, warm-up (not counted), drop set, myo-reps / rest-pause, to-failure flag                                                                                                                                        | Only straight and top sets feed progression, unless we explicitly design otherwise.                   |
+| Rest timer            | Auto-start per exercise type, ±15 s, lock-screen Live Activity (iOS) / ongoing notification (Android), haptic + sound at 0                                                                                               | Local notifications only.                                                                             |
+| Load math             | Plate calculator per gym (bar weight, plates owned), dumbbell/machine increments per gym, kg/lb, bodyweight + added load                                                                                                 | Recommendations round to loads you can actually make.                                                 |
+| Mesocycles            | 4–6 accumulation weeks + deload. Templates (full body, upper/lower, PPL, bro split) or generated from days/week, session length, equipment, experience, muscle priorities                                                | Editing mid-meso keeps history. You can end a meso early or extend it.                                |
+| Progression           | Per-exercise rep range and weekly RIR target. The next load/reps come from the last performance (e1RM with reps-in-reserve). Increments you can't make fall back to adding reps.                                         | Deterministic and versioned, with an explanation for each recommendation. No LLM in the loop.         |
+| Volume autoregulation | Weekly sets per muscle start near a low productive volume and rise with good recovery and pump feedback. They hold or drop with soreness, joint pain or falling performance. Secondary muscles count as fractional sets. | Feedback is optional. Without it, performance trends drive the decision.                              |
+| Deloads               | Planned final week (half the sets, lighter loads, higher RIR). An early deload is offered after repeated performance drops.                                                                                              | Offered, never forced.                                                                                |
+| Exercise library      | Bundled public-domain library (~800 movements) with primary/secondary muscles, equipment, mechanics and force; curated down to a clean set. Custom exercises. Favorites.                                                 | Media is text cues plus a muscle map at launch. See below.                                            |
+| Substitutions         | Same movement pattern and target muscles first, filtered by the gym's equipment and by exercises you've marked "avoid (joint pain)"                                                                                      | A swap can be for today only or for the rest of the meso.                                             |
+| Gyms                  | One or more gym profiles (equipment available, plates, dumbbell range, machine increments)                                                                                                                               | Switching gym re-filters substitutions and re-rounds loads.                                           |
+| Progress              | Weekly sets per muscle against the plan, e1RM and best-set trends per exercise, PRs (1RM/e1RM/rep PRs), session volume and duration, muscle heatmap                                                                      | Tapping a chart opens it with 1M–All ranges, as in Macros.                                            |
+| History               | Calendar of sessions, session detail, edit past sets, per-exercise history                                                                                                                                               | Editing history recomputes future recommendations, not past ones.                                     |
+| Health                | Opt-in: write strength-training workouts (start, end, duration, estimated energy) to HealthKit/Health Connect; read body weight for bodyweight exercises                                                                 | Inherited from the fork's health layer with stable IDs, so there are no duplicates or export loops.   |
+| Data ownership        | Encrypted backup/restore, CSV export of sets, erase all data                                                                                                                                                             | Ported from Vector Macros.                                                                            |
 
 ## Where on-device AI fits
 
@@ -60,7 +60,7 @@ Out of scope for v1: video form analysis, and a downloadable fallback model. Rev
 - **Performance signal.** Compare e1RM across sessions of the same exercise. If it falls two sessions in a row at the same prescription, that counts as local fatigue: hold volume for that muscle, and flag an early deload if it happens across several muscles.
 - **Weekly sets per muscle.** Start from an experience-based range: roughly 8–10 sets per muscle per week for beginners, more for trained lifters, fewer for muscles marked low priority. After each session, optional questions per trained muscle ask about soreness recovered or not, pump, and joint discomfort. Good recovery and a low-to-moderate pump add 1–2 sets to that muscle next week. Unrecovered soreness or joint pain holds or removes a set, and joint pain also suggests a swap. Totals are capped per session and per week. Fractional counting: 1 set for primary muscles, 0.5 for secondary.
 - **Deload.** The last week uses about half the sets at about 90% of the loads, RIR 4+. The next meso restarts volume a little above the last meso's start when recovery allowed it.
-- **Evidence.** Cite RIR-based autoregulation and volume dose-response literature in an offline *Sources & methods* screen. State plainly that the numbers are product heuristics, not individual prescriptions.
+- **Evidence.** Cite RIR-based autoregulation and volume dose-response literature in an offline _Sources & methods_ screen. State plainly that the numbers are product heuristics, not individual prescriptions.
 
 Tests: synthetic lifters with known strength curves, noise, missed sessions, skipped feedback, big dumbbell jumps, lb/kg switches, bodyweight exercises, mid-meso swaps and edits to past sets.
 
@@ -92,15 +92,15 @@ This fork is from Body, which is older than Macros. Port these from `../macro-tr
 
 ## Build order and acceptance gates
 
-| Stage | Deliverable | Gate |
-| --- | --- | --- |
-| 0. Separate | New identity (name, `dev.svindland.vector.lift`, `lifttrack://`, `lift_track.db`, icon), strip Body features, port Macros infrastructure, bundle the exercise library | Installs next to Body and Macros; the library opens and searches offline |
-| 1. Log a workout | Freestyle workouts, logger, set types, rest timer + notifications, plate math, gyms, history | A full week of real training logged in the gym, including app kills mid-set |
-| 2. Programs | Templates, mesocycles, progression recommendations, substitutions, deloads | Recommendations are sane for synthetic lifters; each has an explanation |
-| 3. Autoregulation + Progress | Muscle feedback, weekly volume adjustment, analytics, PRs | A simulated 5-week meso stays within caps; early-deload logic triggers correctly |
-| 4. Native polish | Live Activity rest timer, Health workouts, quick actions (Start next workout), widget | Device QA on iPhone and Android |
-| 5. On-device AI | Say/type a workout, program import, constraint parsing | Faster than manual on a timed test set, with no network use |
-| Later | Apple Watch / Wear OS logging, exercise media, cardio, Vector Macros energy sharing via Health | — |
+| Stage                        | Deliverable                                                                                                                                                           | Gate                                                                             |
+| ---------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| 0. Separate                  | New identity (name, `dev.svindland.vector.lift`, `lifttrack://`, `lift_track.db`, icon), strip Body features, port Macros infrastructure, bundle the exercise library | Installs next to Body and Macros; the library opens and searches offline         |
+| 1. Log a workout             | Freestyle workouts, logger, set types, rest timer + notifications, plate math, gyms, history                                                                          | A full week of real training logged in the gym, including app kills mid-set      |
+| 2. Programs                  | Templates, mesocycles, progression recommendations, substitutions, deloads                                                                                            | Recommendations are sane for synthetic lifters; each has an explanation          |
+| 3. Autoregulation + Progress | Muscle feedback, weekly volume adjustment, analytics, PRs                                                                                                             | A simulated 5-week meso stays within caps; early-deload logic triggers correctly |
+| 4. Native polish             | Live Activity rest timer, Health workouts, quick actions (Start next workout), widget                                                                                 | Device QA on iPhone and Android                                                  |
+| 5. On-device AI              | Say/type a workout, program import, constraint parsing                                                                                                                | Faster than manual on a timed test set, with no network use                      |
+| Later                        | Apple Watch / Wear OS logging, exercise media, cardio, Vector Macros energy sharing via Health                                                                        | —                                                                                |
 
 ## Decisions (September 26, 2026)
 

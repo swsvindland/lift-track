@@ -70,15 +70,15 @@ Because the RIR target falls each week, the same strength gives more reps or loa
 
 Week one uses the plan. Each later week, a day's sets start from last week's same day. Each muscle trained as a primary mover then moves by:
 
-| After last week's session           | Change     |
-| ----------------------------------- | ---------- |
-| Feedback "Easy"                     | +2 sets    |
-| Feedback "Good"                     | +1         |
-| Feedback "Hard" or "Hurt"           | hold       |
-| Feedback "Too much"                 | −1         |
-| No feedback, every target rep hit   | +1         |
-| No feedback, anything else          | hold       |
-| Missed by 2+ reps on most sets      | −1 at most |
+| After last week's session         | Change     |
+| --------------------------------- | ---------- |
+| Feedback "Easy"                   | +2 sets    |
+| Feedback "Good"                   | +1         |
+| Feedback "Hard" or "Hurt"         | hold       |
+| Feedback "Too much"               | −1         |
+| No feedback, every target rep hit | +1         |
+| No feedback, anything else        | hold       |
+| Missed by 2+ reps on most sets    | −1 at most |
 
 Feedback is one optional tap per muscle on the session summary.
 
