@@ -1,5 +1,6 @@
 import { asc, sql } from "drizzle-orm";
 import {
+  aiNudges,
   customExercises,
   db,
   exerciseSettings,
@@ -63,6 +64,7 @@ export function exportSetsCsv(exerciseName: (id: string) => string) {
         "load_lb",
         "reps",
         "rir",
+        "effort",
         "target_load_kg",
         "target_reps",
         "target_rir",
@@ -80,6 +82,7 @@ export function exportSetsCsv(exerciseName: (id: string) => string) {
         pounds(set.weightKg),
         set.reps,
         set.rir,
+        set.effort,
         set.targetWeightKg,
         set.targetReps,
         set.targetRir,
@@ -108,6 +111,7 @@ export function erasePersonalRecords() {
   db.all(sql`PRAGMA secure_delete = ON`);
   db.transaction((tx) => {
     for (const table of [
+      aiNudges,
       muscleFeedback,
       sets,
       workoutExercises,

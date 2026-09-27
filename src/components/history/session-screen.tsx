@@ -12,6 +12,7 @@ import {
 import { Screen } from "@/components/ui";
 import { syncHealthSoon } from "@/lib/health-schedule";
 import { MuscleFeedback } from "./muscle-feedback";
+import { SessionNote } from "./session-note";
 import { write, useQuery } from "@/lib/data";
 import { useExercises } from "@/lib/exercise-store";
 import { dayLabel, duration, estimateText, loadText, setText, totalText } from "@/lib/format";
@@ -87,6 +88,8 @@ export function SessionScreen({ id, finished }: { id: number; finished: boolean 
 
       {detail.mesoId !== null && !detail.deload && <MuscleFeedback detail={detail} />}
 
+      <SessionNote key={detail.id} detail={detail} />
+
       {detail.exercises.map((block) => (
         <View key={block.id} className="gap-1">
           <Text className="font-semibold">{byId(block.exerciseId).name}</Text>
@@ -99,8 +102,6 @@ export function SessionScreen({ id, finished }: { id: number; finished: boolean 
           ))}
         </View>
       ))}
-
-      {detail.note ? <Text className="text-muted">{detail.note}</Text> : null}
 
       <View className="gap-2">
         {detail.mesoId === null && (

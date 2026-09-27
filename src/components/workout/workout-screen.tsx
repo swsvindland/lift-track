@@ -8,7 +8,7 @@ import { write, useQuery } from "@/lib/data";
 import { canDoAt, type Exercise } from "@/lib/exercises";
 import { useExercises } from "@/lib/exercise-store";
 import { adviceText, duration, rirText } from "@/lib/format";
-import { isDeloadWeek, programDetail, swapInSession, weekRir } from "@/lib/programs";
+import { isDeloadWeek, programDetail, swapInSession, undoAi, weekRir } from "@/lib/programs";
 import { stopRest } from "@/lib/rest-timer";
 import { syncHealthSoon } from "@/lib/health-schedule";
 import { useStore } from "@/lib/store";
@@ -263,6 +263,14 @@ export function WorkoutScreen({ workoutId }: { workoutId?: number }) {
               restAfter={!inGroup || groups[index + 1] !== block.supersetGroup}
               onSwap={() => setPicker({ replacing: block.id })}
               advice={adviceText(block.advice, units)}
+              ai={
+                block.advice?.aiReason && !editingPast
+                  ? {
+                      reason: block.advice.aiReason,
+                      undo: () => write(() => undoAi(block.id, byId)),
+                    }
+                  : undefined
+              }
               standsInFor={planned && planned !== block.exerciseId ? byId(planned).name : undefined}
               missingAt={!editingPast && gym && !canDoAt(exercise, gym) ? gym.name : undefined}
               nextName={

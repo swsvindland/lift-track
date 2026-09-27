@@ -140,8 +140,14 @@ export const mesoSkips = sqliteTable("meso_skips", {
 
 export const feedbackRatings = ["easy", "good", "hard", "tooMuch", "pain"] as const;
 export type FeedbackRating = (typeof feedbackRatings)[number];
+/** Whether a muscle had recovered from its last session by the time of this one. */
+export const sorenessLevels = ["fresh", "justInTime", "sore"] as const;
+export type Soreness = (typeof sorenessLevels)[number];
 
-/** How a muscle felt after a session; adjusts that day's sets next week. */
+/**
+ * How a muscle felt after a session (workload) and whether it came in recovered (soreness).
+ * Workload adjusts that day's sets next week; soreness adjusts the session before it.
+ */
 export const muscleFeedback = sqliteTable(
   "muscle_feedback",
   {
@@ -150,11 +156,34 @@ export const muscleFeedback = sqliteTable(
       .notNull()
       .references(() => workouts.id, { onDelete: "cascade" }),
     muscle: text("muscle").$type<Muscle>().notNull(),
-    rating: text("rating").$type<FeedbackRating>().notNull(),
+    rating: text("rating").$type<FeedbackRating>(),
+    soreness: text("soreness").$type<Soreness>(),
   },
   (t) => [uniqueIndex("muscle_feedback_workout_muscle").on(t.workoutId, t.muscle)]
 );
 export type MuscleFeedback = typeof muscleFeedback.$inferSelect;
+
+/**
+ * What the phone's own model read in a session's note, as bounded nudges for next time: an
+ * exercise pushed (+1) or held (−1), or a muscle given a set more or less (±1). The progression
+ * method applies them on top of its own answer; undoing one dismisses it.
+ */
+export const aiNudges = sqliteTable(
+  "ai_nudges",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    workoutId: integer("workout_id")
+      .notNull()
+      .references(() => workouts.id, { onDelete: "cascade" }),
+    exerciseId: text("exercise_id"),
+    muscle: text("muscle").$type<Muscle>(),
+    value: integer("value").notNull(),
+    reason: text("reason").notNull(),
+    dismissed: integer("dismissed", { mode: "boolean" }).notNull().default(false),
+  },
+  (t) => [index("ai_nudges_workout").on(t.workoutId)]
+);
+export type AiNudge = typeof aiNudges.$inferSelect;
 
 export const workouts = sqliteTable(
   "workouts",
@@ -208,6 +237,9 @@ export const workoutExercises = sqliteTable(
 export type WorkoutExercise = typeof workoutExercises.$inferSelect;
 
 export const setKinds = ["warmup", "working", "drop", "myo"] as const;
+/** A set's effort in three colors: hard (1 or fewer in reserve), good (1–3), easy (more). */
+export const efforts = ["hard", "good", "easy"] as const;
+export type Effort = (typeof efforts)[number];
 export type SetKind = (typeof setKinds)[number];
 
 export const sets = sqliteTable(
@@ -224,6 +256,8 @@ export const sets = sqliteTable(
     reps: integer("reps"),
     /** Reps in reserve as the lifter judged it; null when not recorded. */
     rir: real("rir"),
+    /** Effort as rated after the set; stands in for reps in reserve when none was typed. */
+    effort: text("effort").$type<Effort>(),
     side: text("side", { enum: ["left", "right"] }),
     /** Null until the set is checked off. */
     completedAt: text("completed_at"),

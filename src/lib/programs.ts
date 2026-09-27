@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray, isNotNull, isNull } from "drizzle-orm";
+import { and, asc, desc, eq, gt, inArray, isNotNull, isNull } from "drizzle-orm";
 import {
   db,
   mesoDays,
@@ -15,14 +15,23 @@ import {
   type MesoSlot,
   type ExerciseSetting,
   type Mesocycle,
+  type Soreness,
+  type Workout,
 } from "@/db";
 import { standIns, type Exercise } from "./exercises";
 import type { Muscle } from "./exercises/types";
 import type { ProgramDraft } from "./program-builder";
-import { DELOAD_RIR, METHOD, prescribe, type PastSet } from "./progression";
+import { DELOAD_RIR, METHOD, prescribe, type Advice, type AiApplied } from "./progression";
 import { countsAsWork } from "./strength";
 import {
   activeWorkout,
+  addSet,
+  comparableSessions,
+  dismissNudges,
+  exerciseNudge,
+  gymById,
+  nudgesFor,
+  withNudge,
   discardWorkout,
   replaceExercise,
   workoutDetail,
@@ -147,6 +156,46 @@ export function draftFrom(detail: ProgramDetail): ProgramDraft {
       })),
     })),
   };
+}
+
+/**
+ * A finished program as the next block's draft. Each muscle whose weekly sets grew by two or
+ * more through the block, and that ended it without being still sore, too much or hurt, starts
+ * a set higher: on the day and slot where it has the fewest. Loads carry over from history.
+ */
+export function nextBlock(detail: ProgramDetail, byId: (id: string) => Exercise): ProgramDraft {
+  const draft = draftFrom(detail);
+  const done = mesoWorkouts(detail.id).filter((w) => w.endedAt && !w.deload);
+  const weeks = [...new Set(done.map((w) => w.mesoWeek ?? 0))].sort((a, b) => a - b);
+  if (weeks.length < 2) return draft;
+  const weekly = (week: number) => {
+    const count = new Map<Muscle, number>();
+    for (const w of done.filter((w) => w.mesoWeek === week))
+      for (const block of workoutDetail(w.id)?.exercises ?? []) {
+        const worked = block.sets.filter((s) => s.completedAt && countsAsWork(s.kind)).length;
+        for (const m of primary(byId(block.exerciseId))) count.set(m, (count.get(m) ?? 0) + worked);
+      }
+    return count;
+  };
+  const first = weekly(weeks[0]);
+  const last = weekly(weeks[weeks.length - 1]);
+  const strained = new Set(
+    done
+      .filter((w) => (w.mesoWeek ?? 0) >= weeks[weeks.length - 1] - 1)
+      .flatMap((w) => feedbackFor(w.id))
+      .filter((f) => f.soreness === "sore" || f.rating === "tooMuch" || f.rating === "pain")
+      .map((f) => f.muscle)
+  );
+  for (const [muscle, sets] of last) {
+    if (sets < (first.get(muscle) ?? 0) + 2) continue;
+    if (strained.has(muscle) || detail.deprioritized.includes(muscle)) continue;
+    const target = draft.days
+      .flatMap((d) => d.slots)
+      .filter((s) => byId(s.exerciseId).muscles[muscle] === 1 && s.sets < MAX_SLOT_SETS)
+      .sort((a, b) => a.sets - b.sets)[0];
+    if (target) target.sets++;
+  }
+  return draft;
 }
 
 /**
@@ -276,11 +325,26 @@ const primary = (exercise: Exercise) =>
   (Object.keys(exercise.muscles) as Muscle[]).filter((m) => exercise.muscles[m] === 1);
 
 /**
- * How a muscle's sets should change on a day, from last week's same session. Feedback decides
- * when given; otherwise hitting the prescribed reps adds a set, missing by two or more on most
- * sets takes one away, anything else holds. A drop in performance caps good feedback at hold.
+ * How a muscle's sets should change on a day, from last week's same session. Workload feedback
+ * decides when given; otherwise hitting the prescribed reps adds a set, missing by two or more on
+ * most sets takes one away, anything else holds. A drop in performance caps good feedback at
+ * hold. Soreness from that session caps the result: only just recovered holds, still sore takes
+ * a set away.
  */
 export function muscleDelta(
+  previous: WorkoutDetail,
+  muscle: Muscle,
+  byId: (id: string) => Exercise,
+  feedback: FeedbackRating | undefined,
+  soreness?: Soreness
+): number {
+  const delta = workloadDelta(previous, muscle, byId, feedback);
+  if (soreness === "sore") return Math.min(delta, -1);
+  if (soreness === "justInTime") return Math.min(delta, 0);
+  return delta;
+}
+
+function workloadDelta(
   previous: WorkoutDetail,
   muscle: Muscle,
   byId: (id: string) => Exercise,
@@ -309,13 +373,18 @@ function setsIn(previous: WorkoutDetail | undefined, slot: MesoSlot) {
   return Math.max(1, done || planned || slot.sets);
 }
 
-export type SlotPlan = { slot: MesoSlot; sets: number; delta: number };
+/** `ai` is the part of `delta` the phone's model asked for, and `aiIds` its nudges. */
+export type SlotPlan = { slot: MesoSlot; sets: number; delta: number; ai: number; aiIds: number[] };
+
+/** Model nudges for a day's muscles: ±1 set each, with their ids. */
+export type SetNudges = Partial<Record<Muscle, { value: number; id: number }>>;
 
 /**
  * Sets for each slot of a day in a week. Week one uses the plan. Later weeks start from last
  * week's same session and move each muscle by its delta, added to the slot with the fewest sets
  * that trains it and taken from the one with the most. A muscle brought down never gains sets.
- * The deload halves last week's sets.
+ * The model's nudges then move a muscle one more set either way, within the same limits. The
+ * deload halves last week's sets.
  */
 export function planDay(
   meso: Pick<Mesocycle, "rir" | "deload" | "deprioritized">,
@@ -323,22 +392,26 @@ export function planDay(
   week: number,
   previous: WorkoutDetail | undefined,
   feedback: Partial<Record<Muscle, FeedbackRating>>,
-  byId: (id: string) => Exercise
+  byId: (id: string) => Exercise,
+  soreness: Partial<Record<Muscle, Soreness>> = {},
+  nudges: SetNudges = {}
 ): SlotPlan[] {
-  const plans = day.slots.map((slot) => ({
+  const plans: SlotPlan[] = day.slots.map((slot) => ({
     slot,
     sets: setsIn(week ? previous : undefined, slot),
     delta: 0,
+    ai: 0,
+    aiIds: [],
   }));
   if (week === 0 || !previous) return plans;
   if (isDeloadWeek(meso, week))
     return plans.map((p) => ({ ...p, sets: Math.max(1, Math.ceil(p.sets / 2)), delta: 0 }));
   const muscles = [...new Set(day.slots.flatMap((s) => primary(byId(s.exerciseId))))];
-  for (const muscle of muscles) {
-    let delta = muscleDelta(previous, muscle, byId, feedback[muscle]);
-    if (meso.deprioritized.includes(muscle)) delta = Math.min(0, delta);
+  /** Moves a muscle's sets by `delta`; returns the slots changed and by how much. */
+  const shift = (muscle: Muscle, delta: number) => {
     const training = plans.filter((p) => byId(p.slot.exerciseId).muscles[muscle] === 1);
     const total = () => training.reduce((sum, p) => sum + p.sets, 0);
+    const moved = new Map<SlotPlan, number>();
     while (delta > 0 && total() < MAX_MUSCLE_SESSION_SETS) {
       const target = training
         .filter((p) => p.sets < MAX_SLOT_SETS)
@@ -346,6 +419,7 @@ export function planDay(
       if (!target) break;
       target.sets++;
       target.delta++;
+      moved.set(target, (moved.get(target) ?? 0) + 1);
       delta--;
     }
     while (delta < 0) {
@@ -353,13 +427,76 @@ export function planDay(
       if (!target) break;
       target.sets--;
       target.delta--;
+      moved.set(target, (moved.get(target) ?? 0) - 1);
       delta++;
+    }
+    return moved;
+  };
+  for (const muscle of muscles) {
+    const delta = muscleDelta(previous, muscle, byId, feedback[muscle], soreness[muscle]);
+    shift(muscle, meso.deprioritized.includes(muscle) ? Math.min(0, delta) : delta);
+  }
+  for (const muscle of muscles) {
+    const nudge = nudges[muscle];
+    if (!nudge || (nudge.value > 0 && meso.deprioritized.includes(muscle))) continue;
+    for (const [plan, n] of shift(muscle, Math.sign(nudge.value))) {
+      plan.ai += n;
+      plan.aiIds.push(nudge.id);
     }
   }
   return plans;
 }
 
 // ——— Starting a session ———
+
+/** Records sets the model added or took on a block's advice, with their reasons. */
+function withSetNudge<T extends AiApplied>(
+  advice: T,
+  sets: number,
+  ids: number[],
+  reasons: Map<number, string>
+): T {
+  if (!sets) return advice;
+  const all = [...(advice.aiIds ? advice.aiIds.split(",").map(Number) : []), ...ids];
+  const why = [advice.aiReason, ...ids.map((id) => reasons.get(id))].filter(Boolean);
+  return {
+    ...advice,
+    aiSets: sets,
+    aiReason: [...new Set(why)].join("; "),
+    aiIds: [...new Set(all)].join(","),
+  };
+}
+
+/**
+ * How recovered each muscle was from a session: the soreness answered at the next session that
+ * trained it. A later session that trained it without an answer ends the search for that muscle.
+ */
+export function sorenessAfter(
+  session: Workout,
+  byId: (id: string) => Exercise
+): Partial<Record<Muscle, Soreness>> {
+  const later = db
+    .select()
+    .from(workouts)
+    .where(and(gt(workouts.startedAt, session.startedAt), isNotNull(workouts.endedAt)))
+    .orderBy(asc(workouts.startedAt))
+    .limit(14)
+    .all();
+  const found: Partial<Record<Muscle, Soreness>> = {};
+  const settled = new Set<Muscle>();
+  for (const workout of later) {
+    const detail = workoutDetail(workout.id);
+    if (!detail) continue;
+    const answers = feedbackFor(workout.id);
+    for (const muscle of trainedMuscles(detail, byId)) {
+      if (settled.has(muscle)) continue;
+      settled.add(muscle);
+      const soreness = answers.find((a) => a.muscle === muscle)?.soreness;
+      if (soreness) found[muscle] = soreness;
+    }
+  }
+  return found;
+}
 
 /** The last finished session of the same program day before a week, with its feedback. */
 function previousSession(mesoId: number, dayId: number, week: number) {
@@ -373,56 +510,25 @@ function previousSession(mesoId: number, dayId: number, week: number) {
     .all()
     .filter((w) => (w.mesoWeek ?? 0) < week);
   const found = list[0];
-  if (!found) return { previous: undefined, feedback: {} };
+  if (!found) return { previous: undefined, found, feedback: {}, soreness: {} };
+  const answers = feedbackFor(found.id);
   const feedback = Object.fromEntries(
-    db
-      .select()
-      .from(muscleFeedback)
-      .where(eq(muscleFeedback.workoutId, found.id))
-      .all()
-      .map((f) => [f.muscle, f.rating])
+    answers.filter((f) => f.rating).map((f) => [f.muscle, f.rating])
   ) as Partial<Record<Muscle, FeedbackRating>>;
-  return { previous: workoutDetail(found.id), feedback };
+  // Soreness answered in that session is about the one before it: the fallback when nothing has
+  // answered for this one yet, as for a muscle trained once a week.
+  const soreness = Object.fromEntries(
+    answers.filter((f) => f.soreness).map((f) => [f.muscle, f.soreness])
+  ) as Partial<Record<Muscle, Soreness>>;
+  return { previous: workoutDetail(found.id), found, feedback, soreness };
 }
 
 /**
  * Completed working sets from the last non-deload session that did an exercise. Sessions from
- * the same side of a trip come first: away, the hotel's dumbbells set the pace; back home, the
- * loads from before you left do, so a lighter week away doesn't pull them down.
+ * the same side of a trip come first (see {@link comparableSessions}).
  */
-export function lastComparable(
-  exerciseId: string,
-  excludeWorkout?: number,
-  travel = false
-): PastSet[] {
-  const rows = db
-    .select({ block: workoutExercises, workout: workouts })
-    .from(workoutExercises)
-    .innerJoin(workouts, eq(workouts.id, workoutExercises.workoutId))
-    .where(
-      and(
-        eq(workoutExercises.exerciseId, exerciseId),
-        isNotNull(workouts.endedAt),
-        eq(workouts.deload, false)
-      )
-    )
-    .orderBy(desc(workouts.startedAt))
-    .limit(20)
-    .all()
-    .sort((a, b) => Number(a.workout.travel !== travel) - Number(b.workout.travel !== travel));
-  for (const { block, workout } of rows) {
-    if (workout.id === excludeWorkout) continue;
-    const done = db
-      .select()
-      .from(sets)
-      .where(and(eq(sets.workoutExerciseId, block.id), isNotNull(sets.completedAt)))
-      .orderBy(asc(sets.position))
-      .all()
-      .filter((s) => s.kind === "working");
-    if (done.length) return done;
-  }
-  return [];
-}
+export const lastComparable = (exerciseId: string, excludeWorkout?: number, travel = false) =>
+  comparableSessions(exerciseId, { limit: 1, excludeWorkout, travel })[0] ?? [];
 
 export type SessionContext = {
   gym?: Gym;
@@ -455,8 +561,15 @@ export function startSession(
   if (!day) throw new Error("Unknown program day");
   const deload = isDeloadWeek(detail, week);
   const rir = weekRir(detail, week);
-  const { previous, feedback } = previousSession(detail.id, dayId, week);
-  const plan = planDay(detail, day, week, previous, feedback, context.byId);
+  const { previous, found, feedback, soreness: before } = previousSession(detail.id, dayId, week);
+  const soreness = found ? { ...before, ...sorenessAfter(found, context.byId) } : {};
+  const nudges: SetNudges = Object.fromEntries(
+    (found ? nudgesFor(found.id) : [])
+      .filter((n) => n.muscle && !n.dismissed)
+      .map((n) => [n.muscle, { value: n.value, id: n.id }])
+  );
+  const plan = planDay(detail, day, week, previous, feedback, context.byId, soreness, nudges);
+  const reasons = new Map(found ? nudgesFor(found.id).map((n) => [n.id, n.reason]) : []);
   const planned = plan.map(({ slot }) => context.byId(slot.exerciseId));
   const chosen =
     context.gym && context.exercises
@@ -479,23 +592,28 @@ export function startSession(
       })
       .returning()
       .get().id;
-    plan.forEach(({ slot, sets: count }, position) => {
+    plan.forEach(({ slot, sets: count, ai, aiIds }, position) => {
       const exercise = chosen[position];
       // A stand-in trains in its own rep range, as a swap does.
       const reps: [number, number] =
         exercise.id === slot.exerciseId
           ? [slot.repMin, slot.repMax]
           : [exercise.reps[0], exercise.reps[1]];
+      const [last = [], ...history] = comparableSessions(exercise.id, { travel: context.travel });
+      const nudge = deload ? undefined : exerciseNudge(exercise.id, workoutId);
       const result = prescribe({
         exercise,
         gym: context.gym,
         reps,
         rir,
         sets: count,
-        last: lastComparable(exercise.id, undefined, context.travel),
+        last,
+        history,
         bodyWeightKg: context.bodyWeightKg,
         deload,
+        nudge: nudge?.value,
       });
+      const advice = withSetNudge(withNudge(result.advice, nudge), ai, aiIds, reasons);
       const blockId = tx
         .insert(workoutExercises)
         .values({
@@ -505,7 +623,7 @@ export function startSession(
           repMin: reps[0],
           repMax: reps[1],
           slotId: slot.id,
-          advice: result.advice,
+          advice,
         })
         .returning()
         .get().id;
@@ -529,21 +647,32 @@ export function startSession(
 
 // ——— Feedback ———
 
-export function saveFeedback(workoutId: number, muscle: Muscle, rating: FeedbackRating | null) {
-  if (!rating) {
-    db.delete(muscleFeedback)
-      .where(and(eq(muscleFeedback.workoutId, workoutId), eq(muscleFeedback.muscle, muscle)))
-      .run();
+/** Records one muscle's answers; a muscle with neither answer left has no row. */
+function saveAnswers(
+  workoutId: number,
+  muscle: Muscle,
+  patch: { rating?: FeedbackRating | null; soreness?: Soreness | null }
+) {
+  const where = and(eq(muscleFeedback.workoutId, workoutId), eq(muscleFeedback.muscle, muscle));
+  const existing = db.select().from(muscleFeedback).where(where).get();
+  const next = { rating: existing?.rating ?? null, soreness: existing?.soreness ?? null, ...patch };
+  if (!next.rating && !next.soreness) {
+    db.delete(muscleFeedback).where(where).run();
     return;
   }
   db.insert(muscleFeedback)
-    .values({ workoutId, muscle, rating })
-    .onConflictDoUpdate({
-      target: [muscleFeedback.workoutId, muscleFeedback.muscle],
-      set: { rating },
-    })
+    .values({ workoutId, muscle, ...next })
+    .onConflictDoUpdate({ target: [muscleFeedback.workoutId, muscleFeedback.muscle], set: next })
     .run();
 }
+
+/** How much the session was for a muscle; adjusts that day's sets next week. */
+export const saveFeedback = (workoutId: number, muscle: Muscle, rating: FeedbackRating | null) =>
+  saveAnswers(workoutId, muscle, { rating });
+
+/** Whether a muscle came in recovered; adjusts the session that last trained it. */
+export const saveSoreness = (workoutId: number, muscle: Muscle, soreness: Soreness | null) =>
+  saveAnswers(workoutId, muscle, { soreness });
 
 export function feedbackFor(workoutId: number) {
   return db.select().from(muscleFeedback).where(eq(muscleFeedback.workoutId, workoutId)).all();
@@ -598,13 +727,18 @@ export function swapInSession(
       .orderBy(asc(sets.position))
       .all()
       .filter((s) => s.kind === "working");
+    const [last = [], ...history] = comparableSessions(exercise.id, {
+      excludeWorkout: workout.id,
+      travel: workout.travel,
+    });
     const result = prescribe({
       exercise,
       gym: context.gym,
       reps: exercise.reps,
       rir: weekRir(meso, workout.mesoWeek ?? 0),
       sets: open.length,
-      last: lastComparable(exercise.id, workout.id, workout.travel),
+      last,
+      history,
       bodyWeightKg: context.bodyWeightKg ?? workout.bodyWeightKg,
       deload: workout.deload,
     });
@@ -624,5 +758,79 @@ export function swapInSession(
         .run()
     );
     return newId;
+  });
+}
+
+// ——— The model's nudges ———
+
+/**
+ * Undoes what the phone's model changed on an exercise in an open session: sets it added or
+ * took come back off or on (open ones only), a push or hold is re-prescribed without it, and its
+ * nudges are dismissed so they aren't applied again.
+ */
+export function undoAi(workoutExerciseId: number, byId: (id: string) => Exercise) {
+  db.transaction(() => {
+    const block = db
+      .select()
+      .from(workoutExercises)
+      .where(eq(workoutExercises.id, workoutExerciseId))
+      .get();
+    const advice = block?.advice;
+    const workout = block
+      ? db.select().from(workouts).where(eq(workouts.id, block.workoutId)).get()
+      : undefined;
+    if (!block || !advice || !workout || (!advice.ai && !advice.aiSets)) return;
+    dismissNudges((advice.aiIds ?? "").split(",").map(Number).filter(Boolean));
+    const openSets = () =>
+      db
+        .select()
+        .from(sets)
+        .where(and(eq(sets.workoutExerciseId, block.id), isNull(sets.completedAt)))
+        .orderBy(asc(sets.position))
+        .all()
+        .filter((s) => s.kind === "working");
+    const added = advice.aiSets ?? 0;
+    if (added > 0)
+      for (const s of openSets().slice(-added)) db.delete(sets).where(eq(sets.id, s.id)).run();
+    for (let i = 0; i < -added; i++) addSet(block.id);
+    let next: Advice = { ...advice };
+    for (const key of ["ai", "aiSets", "aiReason", "aiIds"] as const) delete next[key];
+    const open = openSets();
+    if (advice.ai && open.length) {
+      const meso = workout.mesoId
+        ? db.select().from(mesocycles).where(eq(mesocycles.id, workout.mesoId)).get()
+        : undefined;
+      const [last = [], ...history] = comparableSessions(block.exerciseId, {
+        excludeWorkout: workout.id,
+        travel: workout.travel,
+      });
+      const result = prescribe({
+        exercise: byId(block.exerciseId),
+        gym: workout.gymId ? gymById(workout.gymId) : undefined,
+        reps: [block.repMin, block.repMax],
+        rir: meso ? weekRir(meso, workout.mesoWeek ?? 0) : undefined,
+        sets: open.length,
+        last,
+        history,
+        bodyWeightKg: workout.bodyWeightKg,
+        deload: workout.deload,
+      });
+      next = result.advice;
+      open.forEach((s, i) =>
+        db
+          .update(sets)
+          .set({
+            targetWeightKg: result.sets[i]?.weightKg ?? null,
+            targetReps: result.sets[i]?.reps ?? null,
+            targetRir: meso ? (result.sets[i]?.rir ?? null) : null,
+          })
+          .where(eq(sets.id, s.id))
+          .run()
+      );
+    }
+    db.update(workoutExercises)
+      .set({ advice: next })
+      .where(eq(workoutExercises.id, block.id))
+      .run();
   });
 }

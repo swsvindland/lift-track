@@ -1,5 +1,7 @@
 import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, lt, max } from "drizzle-orm";
 import {
+  aiNudges,
+  customExercises,
   db,
   gyms,
   preferences,
@@ -7,14 +9,19 @@ import {
   weightEntries,
   workoutExercises,
   workouts,
+  type AiNudge,
+  type Effort,
   type Gym,
   type SetKind,
   type Workout,
   type WorkoutExercise,
   type WorkoutSet,
 } from "@/db";
+import { exerciseById } from "./exercises";
+import type { SessionReading } from "./lift-ai";
 import { defaultGym, type NewGym } from "./loads";
 import { localDay, type Units } from "./metrics";
+import { keptUp, prescribe, type PastSet } from "./progression";
 import { countsAsWork, e1rm } from "./strength";
 
 /* Every write here is one small transaction, so a workout survives the app being killed
@@ -348,8 +355,162 @@ export function startWorkout(
 }
 
 /**
- * Adds an exercise with sets prefilled from its last performance: the same loads and reps
- * as targets. With no history the sets start empty with the slot's rep range.
+ * Completed working sets from recent non-deload sessions that did an exercise, newest first:
+ * what progression builds on. Sessions from the same side of a trip come first: away, the
+ * hotel's dumbbells set the pace; back home, the loads from before you left do, so a lighter
+ * week away doesn't pull them down.
+ */
+export function comparableSessions(
+  exerciseId: string,
+  options: { limit?: number; excludeWorkout?: number; travel?: boolean } = {}
+): PastSet[][] {
+  const limit = options.limit ?? 6;
+  const travel = options.travel ?? false;
+  const rows = db
+    .select({ block: workoutExercises, workout: workouts })
+    .from(workoutExercises)
+    .innerJoin(workouts, eq(workouts.id, workoutExercises.workoutId))
+    .where(
+      and(
+        eq(workoutExercises.exerciseId, exerciseId),
+        isNotNull(workouts.endedAt),
+        eq(workouts.deload, false)
+      )
+    )
+    .orderBy(desc(workouts.startedAt), desc(workouts.id))
+    .limit(20)
+    .all()
+    .sort((a, b) => Number(a.workout.travel !== travel) - Number(b.workout.travel !== travel));
+  const found: PastSet[][] = [];
+  for (const { block, workout } of rows) {
+    if (workout.id === options.excludeWorkout) continue;
+    const done = db
+      .select()
+      .from(sets)
+      .where(and(eq(sets.workoutExerciseId, block.id), isNotNull(sets.completedAt)))
+      .orderBy(asc(sets.position))
+      .all()
+      .filter((s) => s.kind === "working");
+    if (done.length) found.push(done);
+    if (found.length >= limit) break;
+  }
+  return found;
+}
+
+// ——— What the phone's model read in a note ———
+
+export function setWorkoutNote(workoutId: number, note: string) {
+  db.update(workouts)
+    .set({ note: note.trim(), updatedAt: Date.now() })
+    .where(eq(workouts.id, workoutId))
+    .run();
+}
+
+/**
+ * Replaces a session's nudges with what its note says now. On a rough day, exercises that fell
+ * behind are held rather than backed off from.
+ */
+export function saveNudges(workoutId: number, reading: SessionReading) {
+  const detail = workoutDetail(workoutId);
+  const exercises = [...reading.exercises];
+  if (reading.tired && detail)
+    for (const block of detail.exercises) {
+      const done = block.sets.filter((s) => s.kind === "working" && s.completedAt);
+      if (!done.length || keptUp(done)) continue;
+      if (exercises.some((e) => e.exerciseId === block.exerciseId)) continue;
+      exercises.push({
+        exerciseId: block.exerciseId,
+        value: -1,
+        reason: "Rough day: hold, don't back off",
+      });
+    }
+  db.transaction((tx) => {
+    tx.delete(aiNudges).where(eq(aiNudges.workoutId, workoutId)).run();
+    for (const e of exercises)
+      tx.insert(aiNudges)
+        .values({ workoutId, exerciseId: e.exerciseId, value: e.value, reason: e.reason })
+        .run();
+    for (const m of reading.muscles)
+      tx.insert(aiNudges)
+        .values({ workoutId, muscle: m.muscle, value: m.value, reason: m.reason })
+        .run();
+  });
+}
+
+export const nudgesFor = (workoutId: number) =>
+  db.select().from(aiNudges).where(eq(aiNudges.workoutId, workoutId)).all();
+
+export function dismissNudges(ids: number[]) {
+  if (ids.length)
+    db.update(aiNudges).set({ dismissed: true }).where(inArray(aiNudges.id, ids)).run();
+}
+
+/** The model's live nudge on an exercise from the last session that did it. */
+export function exerciseNudge(exerciseId: string, excludeWorkout?: number): AiNudge | undefined {
+  const source = db
+    .select({ id: workouts.id })
+    .from(workoutExercises)
+    .innerJoin(workouts, eq(workouts.id, workoutExercises.workoutId))
+    .where(
+      and(
+        eq(workoutExercises.exerciseId, exerciseId),
+        isNotNull(workouts.endedAt),
+        eq(workouts.deload, false)
+      )
+    )
+    .orderBy(desc(workouts.startedAt), desc(workouts.id))
+    .limit(2)
+    .all()
+    .find((w) => w.id !== excludeWorkout);
+  if (!source) return undefined;
+  return db
+    .select()
+    .from(aiNudges)
+    .where(
+      and(
+        eq(aiNudges.workoutId, source.id),
+        eq(aiNudges.exerciseId, exerciseId),
+        eq(aiNudges.dismissed, false)
+      )
+    )
+    .get();
+}
+
+/** A prescription's advice with the model's nudge recorded on it, for the screen and undo. */
+export const withNudge = <T extends object>(advice: T, nudge: AiNudge | undefined) =>
+  nudge ? { ...advice, ai: nudge.value, aiReason: nudge.reason, aiIds: String(nudge.id) } : advice;
+
+/**
+ * Next targets outside a program: last time's sets at the same effort, one step on (+1 rep or
+ * the next load) when last time kept up, and the model's nudge from a note on top. Undefined
+ * with no history or an unknown exercise.
+ */
+function freeTargets(workoutId: number, exerciseId: string, reps: readonly [number, number]) {
+  const workout = db.select().from(workouts).where(eq(workouts.id, workoutId)).get();
+  const [last, ...history] = comparableSessions(exerciseId, {
+    excludeWorkout: workoutId,
+    travel: workout?.travel,
+  });
+  const exercise = exerciseById(exerciseId, db.select().from(customExercises).all());
+  if (!last || !exercise) return undefined;
+  const gym = workout?.gymId ? gymById(workout.gymId) : undefined;
+  const nudge = exerciseNudge(exerciseId, workoutId);
+  const result = prescribe({
+    exercise,
+    gym,
+    reps,
+    sets: Math.min(last.length, 10),
+    last,
+    history,
+    bodyWeightKg: workout?.bodyWeightKg ?? latestBodyWeight(),
+    nudge: nudge?.value,
+  });
+  return { ...result, advice: withNudge(result.advice, nudge) };
+}
+
+/**
+ * Adds an exercise with sets prefilled from its last performance, a step on when it kept up.
+ * With no history the sets start empty with the slot's rep range.
  */
 function insertBlock(
   workoutId: number,
@@ -371,12 +532,17 @@ function insertBlock(
     })
     .returning()
     .get();
-  const last = lastPerformance(exerciseId, workoutId);
-  const previous = last?.sets.filter((s) => s.kind === "working") ?? [];
+  const next = freeTargets(workoutId, exerciseId, reps);
+  if (next)
+    db.update(workoutExercises)
+      .set({ advice: next.advice })
+      .where(eq(workoutExercises.id, block.id))
+      .run();
+  const targets = next?.sets ?? [];
   // Last time's set count unless the caller asks for a number (repeating a workout).
-  const total = count ?? (Math.min(previous.length, 10) || 3);
+  const total = count ?? (targets.length || 3);
   for (let i = 0; i < total; i++) {
-    const from = previous[Math.min(i, previous.length - 1)];
+    const from = targets[Math.min(i, targets.length - 1)];
     db.insert(sets)
       .values({
         workoutExerciseId: block.id,
@@ -458,12 +624,19 @@ function blockOf(setId: number) {
 
 export function updateSet(
   setId: number,
-  patch: Partial<Pick<SetRow, "weightKg" | "reps" | "rir" | "kind" | "side">>
+  patch: Partial<Pick<SetRow, "weightKg" | "reps" | "rir" | "effort" | "kind" | "side">>
 ) {
   const block = blockOf(setId);
   db.update(sets).set(patch).where(eq(sets.id, setId)).run();
   if (block) touch(block.workoutId);
 }
+
+/** How hard a set felt; a rating replaces any typed reps in reserve. */
+export function rateSet(setId: number, effort: Effort | null) {
+  updateSet(setId, { effort, rir: null });
+}
+
+export const setById = (setId: number) => db.select().from(sets).where(eq(sets.id, setId)).get();
 
 /**
  * Checks a set off. Values not typed are taken from its targets, so a set done as

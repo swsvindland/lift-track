@@ -64,16 +64,18 @@ function lift() {
   const metrics = load("src/lib/metrics.ts");
   const strength = load("src/lib/strength.ts");
   const loads = load("src/lib/loads.ts", { "./metrics": metrics });
-  const workouts = load("src/lib/workouts.ts", {
-    "@/db": { db, ...schema },
-    "./loads": loads,
-    "./metrics": metrics,
-    "./strength": strength,
-  });
   const { library } = load("src/lib/exercises/library.ts");
   const exercises = load("src/lib/exercises/index.ts", { "./library": { library } });
-  const volume = load("src/lib/volume.ts", { "./strength": strength });
   const progression = load("src/lib/progression.ts", { "./loads": loads, "./strength": strength });
+  const workouts = load("src/lib/workouts.ts", {
+    "@/db": { db, ...schema },
+    "./exercises": exercises,
+    "./loads": loads,
+    "./metrics": metrics,
+    "./progression": progression,
+    "./strength": strength,
+  });
+  const volume = load("src/lib/volume.ts", { "./strength": strength });
   const builder = load("src/lib/program-builder.ts", {
     "./exercises": exercises,
     "./progression": progression,

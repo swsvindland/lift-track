@@ -2,11 +2,15 @@ import { useEffect, useRef } from "react";
 import { View } from "react-native";
 import * as Haptics from "expo-haptics";
 import { SystemButton, SystemText as Text } from "@/components/system";
+import { useQuery, write } from "@/lib/data";
 import { adjustRest, formatClock, stopRest, useRest } from "@/lib/rest-timer";
+import { rateSet, setById } from "@/lib/workouts";
+import { EffortPicker } from "./effort";
 
-/** The running rest, pinned above the bottom of the workout. */
+/** The running rest, pinned above the bottom of the workout, with the set just done to rate. */
 export function RestBar() {
   const { rest, left } = useRest();
+  const set = useQuery(() => (rest?.setId ? setById(rest.setId) : undefined), [rest?.setId]);
   const buzzed = useRef<number | null>(null);
   useEffect(() => {
     if (!rest || left > 0 || buzzed.current === rest.endsAt) return;
@@ -56,6 +60,13 @@ export function RestBar() {
       <View className="h-1 overflow-hidden rounded-full bg-muted">
         <View className="h-1 bg-accent" style={{ width: `${progress * 100}%` }} />
       </View>
+      {set?.completedAt && (
+        <EffortPicker
+          inverted
+          effort={set.effort}
+          onChange={(effort) => write(() => rateSet(set.id, effort))}
+        />
+      )}
     </View>
   );
 }

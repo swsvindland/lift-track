@@ -79,7 +79,16 @@ function seed(ctx) {
       workouts.completeSet(s.id);
     }
   workouts.finishWorkout(w);
-  programs.saveFeedback(w, programs.trainedMuscles(workouts.workoutDetail(w), byId)[0], "good");
+  const trained = programs.trainedMuscles(workouts.workoutDetail(w), byId);
+  programs.saveFeedback(w, trained[0], "good");
+  programs.saveSoreness(w, trained[0], "justInTime");
+  const first = workouts.workoutDetail(w).exercises[0];
+  workouts.rateSet(first.sets[0].id, "easy");
+  workouts.saveNudges(w, {
+    exercises: [{ exerciseId: first.exerciseId, value: 1, reason: "Felt light" }],
+    muscles: [{ muscle: trained[0], value: -1, reason: "Beat up" }],
+    tired: false,
+  });
   programs.skipSession(mesoId, 0, detail.days[1].id);
   return { gym, mesoId, workoutId: w };
 }
@@ -97,6 +106,7 @@ const tables = [
   "workoutExercises",
   "sets",
   "muscleFeedback",
+  "aiNudges",
 ];
 const dump = (db) =>
   Object.fromEntries(

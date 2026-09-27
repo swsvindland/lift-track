@@ -47,6 +47,13 @@ export function dayLabel(iso: string, locale: string) {
 /** One line on why a prescription is what it is. */
 export function adviceText(advice: Advice | null | undefined, units: Units): string {
   if (!advice) return "";
+  const why = reason(advice, units);
+  return "stalled" in advice && advice.stalled
+    ? `${why}. Behind ${advice.stalled} sessions running: a swap may help`
+    : why;
+}
+
+function reason(advice: Advice, units: Units): string {
   const load = (kg: number) => loadText(kg, units);
   switch (advice.kind) {
     case "first":
