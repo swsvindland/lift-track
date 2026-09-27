@@ -369,6 +369,13 @@ test("a program runs week by week: prescriptions, feedback-driven sets, skips an
   const context = { gym, bodyWeightKg: 80, byId };
   const dayA = detail.days[0];
 
+  // An empty workout left open doesn't block the program; one with exercises is resumed.
+  const empty = workouts.startWorkout();
+  const started = programs.startSession(detail, 0, detail.days[0].id, context);
+  assert.notEqual(started, empty);
+  assert.equal(workouts.workoutDetail(empty), undefined);
+  workouts.discardWorkout(started);
+
   // Week 1, day A: first-time prescriptions; do everything with 60 × target reps.
   let next = programs.nextSession(detail);
   assert.deepEqual([next.week, next.dayId], [0, dayA.id]);

@@ -20,7 +20,13 @@ import type { Muscle } from "./exercises/types";
 import type { ProgramDraft } from "./program-builder";
 import { DELOAD_RIR, METHOD, prescribe, type PastSet } from "./progression";
 import { countsAsWork } from "./strength";
-import { activeWorkout, replaceExercise, workoutDetail, type WorkoutDetail } from "./workouts";
+import {
+  activeWorkout,
+  discardWorkout,
+  replaceExercise,
+  workoutDetail,
+  type WorkoutDetail,
+} from "./workouts";
 
 /* Programs (mesocycles) and the sessions they generate. A session's prescription is computed
    when it starts, from what was actually done before, and stored on its sets. */
@@ -404,7 +410,7 @@ export function lastComparable(exerciseId: string, excludeWorkout?: number): Pas
 
 /**
  * Starts a program session with every set prescribed. Returns the open workout instead when one
- * is already running.
+ * is already running with exercises in it; an empty one is discarded first.
  */
 export function startSession(
   detail: ProgramDetail,
@@ -413,7 +419,10 @@ export function startSession(
   context: { gym?: Gym; bodyWeightKg?: number | null; byId: (id: string) => Exercise }
 ): number {
   const open = activeWorkout();
-  if (open) return open.id;
+  if (open) {
+    if (workoutDetail(open.id)?.exercises.length) return open.id;
+    discardWorkout(open.id);
+  }
   const day = detail.days.find((d) => d.id === dayId);
   if (!day) throw new Error("Unknown program day");
   const deload = isDeloadWeek(detail, week);
