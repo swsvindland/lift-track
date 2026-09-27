@@ -88,7 +88,8 @@ export const mesocycles = sqliteTable("mesocycles", {
   gymId: integer("gym_id").references(() => gyms.id, { onDelete: "set null" }),
   /** Progression method version, so later changes don't reinterpret old blocks. */
   method: integer("method").notNull(),
-  status: text("status", { enum: ["active", "finished"] }).notNull(),
+  /** Saved programs wait to start; their startedAt is when they were saved until then. */
+  status: text("status", { enum: ["saved", "active", "finished"] }).notNull(),
   startedAt: text("started_at").notNull(),
   endedAt: text("ended_at"),
 });

@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gt, inArray, isNotNull, isNull } from "drizzle-orm";
+import { and, asc, desc, eq, gt, inArray, isNotNull, isNull, ne } from "drizzle-orm";
 import {
   db,
   mesoDays,
@@ -56,10 +56,6 @@ export function activeMeso(): Mesocycle | undefined {
     .get();
 }
 
-export function lastMeso(): Mesocycle | undefined {
-  return db.select().from(mesocycles).orderBy(desc(mesocycles.id)).limit(1).get();
-}
-
 export function programDetail(id: number): ProgramDetail | undefined {
   const meso = db.select().from(mesocycles).where(eq(mesocycles.id, id)).get();
   if (!meso) return undefined;
@@ -96,50 +92,92 @@ export const isDeloadWeek = (meso: Pick<Mesocycle, "rir" | "deload">, week: numb
 export const weekRir = (meso: Pick<Mesocycle, "rir" | "deload">, week: number) =>
   isDeloadWeek(meso, week) ? DELOAD_RIR : meso.rir[Math.min(week, meso.rir.length - 1)];
 
+type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+
+function insertProgram(tx: Tx, draft: ProgramDraft, status: "saved" | "active", deload = true) {
+  const meso = tx
+    .insert(mesocycles)
+    .values({
+      name: draft.name,
+      rir: draft.rir,
+      deload,
+      deprioritized: draft.deprioritized ?? [],
+      gymId: draft.gymId ?? null,
+      method: METHOD,
+      status,
+      startedAt: now(),
+    })
+    .returning()
+    .get();
+  draft.days.forEach((day, position) => {
+    const dayId = tx
+      .insert(mesoDays)
+      .values({ mesoId: meso.id, position, name: day.name })
+      .returning()
+      .get().id;
+    day.slots.forEach((slot, index) =>
+      tx
+        .insert(mesoSlots)
+        .values({
+          dayId,
+          position: index,
+          exerciseId: slot.exerciseId,
+          sets: slot.sets,
+          repMin: slot.reps[0],
+          repMax: slot.reps[1],
+        })
+        .run()
+    );
+  });
+  return meso.id;
+}
+
+const finishActive = (tx: Tx) =>
+  tx
+    .update(mesocycles)
+    .set({ status: "finished", endedAt: now() })
+    .where(eq(mesocycles.status, "active"))
+    .run();
+
 /** Saves a draft as the active program, finishing any other. */
 export function startProgram(draft: ProgramDraft, options: { deload?: boolean } = {}) {
   return db.transaction((tx) => {
-    tx.update(mesocycles)
-      .set({ status: "finished", endedAt: now() })
-      .where(eq(mesocycles.status, "active"))
-      .run();
-    const meso = tx
-      .insert(mesocycles)
-      .values({
-        name: draft.name,
-        rir: draft.rir,
-        deload: options.deload ?? true,
-        deprioritized: draft.deprioritized ?? [],
-        gymId: draft.gymId ?? null,
-        method: METHOD,
-        status: "active",
-        startedAt: now(),
-      })
-      .returning()
-      .get();
-    draft.days.forEach((day, position) => {
-      const dayId = tx
-        .insert(mesoDays)
-        .values({ mesoId: meso.id, position, name: day.name })
-        .returning()
-        .get().id;
-      day.slots.forEach((slot, index) =>
-        tx
-          .insert(mesoSlots)
-          .values({
-            dayId,
-            position: index,
-            exerciseId: slot.exerciseId,
-            sets: slot.sets,
-            repMin: slot.reps[0],
-            repMax: slot.reps[1],
-          })
-          .run()
-      );
-    });
-    return meso.id;
+    finishActive(tx);
+    return insertProgram(tx, draft, "active", options.deload);
   });
 }
+
+/** Keeps a draft to start later. */
+export const saveProgram = (draft: ProgramDraft) =>
+  db.transaction((tx) => insertProgram(tx, draft, "saved"));
+
+/** Starts a saved program, finishing the running one. */
+export function startSaved(id: number) {
+  db.transaction((tx) => {
+    finishActive(tx);
+    tx.update(mesocycles)
+      .set({ status: "active", startedAt: now(), endedAt: null })
+      .where(and(eq(mesocycles.id, id), eq(mesocycles.status, "saved")))
+      .run();
+  });
+}
+
+/** Every program but the running one: saved first, then finished, newest first. */
+export function otherPrograms(): ProgramDetail[] {
+  const rows = db
+    .select()
+    .from(mesocycles)
+    .where(ne(mesocycles.status, "active"))
+    .orderBy(desc(mesocycles.id))
+    .all();
+  return [...rows.filter((m) => m.status === "saved"), ...rows.filter((m) => m.status !== "saved")]
+    .map((m) => programDetail(m.id))
+    .filter((d): d is ProgramDetail => !!d);
+}
+
+/** Removes a program; workouts done on it stay in History. */
+export const deleteProgram = (id: number) =>
+  db.delete(mesocycles).where(eq(mesocycles.id, id)).run();
 
 /** The program as a draft, to edit or to run again. */
 export function draftFrom(detail: ProgramDetail): ProgramDraft {
@@ -200,7 +238,7 @@ export function nextBlock(detail: ProgramDetail, byId: (id: string) => Exercise)
 }
 
 /**
- * Replaces the running program's days and slots. Past sessions keep their exercises; slots that
+ * Replaces a running or saved program's days and slots. Past sessions keep their exercises; slots that
  * survive (same day and exercise) keep their ids, so progression history carries over.
  */
 export function updateProgram(id: number, draft: ProgramDraft) {

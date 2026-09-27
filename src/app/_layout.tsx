@@ -89,8 +89,8 @@ export default function RootLayout(): JSX.Element {
         <StoreProvider>
           <Stack screenOptions={{ headerShown: false }}>
             <Stack.Screen name="(tabs)" />
-            <Stack.Screen name="workout" options={{ presentation: "modal" }} />
-            <Stack.Screen name="start" options={{ presentation: "modal", animation: "none" }} />
+            <Stack.Screen name="workout" />
+            <Stack.Screen name="start" options={{ animation: "none" }} />
           </Stack>
           <WatchLink />
         </StoreProvider>

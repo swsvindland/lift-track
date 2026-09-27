@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Alert, Pressable, View } from "react-native";
-import { router, Stack } from "expo-router";
+import { router, Stack, useNavigation } from "expo-router";
+import { usePreventRemove } from "expo-router/react-navigation";
 import { useThemeColor } from "heroui-native";
 import {
   Chip,
@@ -19,7 +20,16 @@ import type { Muscle } from "@/lib/exercises/types";
 import { useExercises } from "@/lib/exercise-store";
 import type { DraftSlot, ProgramDraft } from "@/lib/program-builder";
 import { rirPlan } from "@/lib/progression";
-import { draftFrom, programDetail, startProgram, updateProgram } from "@/lib/programs";
+import {
+  activeMeso,
+  draftFrom,
+  nextBlock,
+  programDetail,
+  saveProgram,
+  startProgram,
+  startSaved,
+  updateProgram,
+} from "@/lib/programs";
 import { useStore } from "@/lib/store";
 import { activeGym, listGyms } from "@/lib/workouts";
 
@@ -68,27 +78,66 @@ function weeklySets(draft: ProgramDraft, byId: (id: string) => Exercise) {
   return (Object.entries(totals) as [Muscle, number][]).sort((a, b) => b[1] - a[1]);
 }
 
-/** Edits a freshly built program before it starts, or the running one when given its id. */
+/**
+ * Edits a freshly built program, or a saved or running one when given its id. A finished one
+ * opens as its next block, loads carrying over, and saves as a new program.
+ */
 export function ProgramEditor({ programId }: { programId?: number }) {
   const { units } = useStore();
   const { byId } = useExercises();
   const background = useThemeColor("background");
   const foreground = useThemeColor("foreground");
-  const [draft, setDraft] = useState<ProgramDraft | null>(() => {
-    if (programId) {
-      const detail = programDetail(programId);
-      return detail ? draftFrom(detail) : null;
-    }
-    return pendingDraft();
+  const [program] = useState(() => (programId ? programDetail(programId) : undefined));
+  // Where saving goes: a new program, or back into this one.
+  const kind = !programId ? "new" : program?.status === "finished" ? "again" : program?.status;
+  const [initial] = useState<ProgramDraft | null>(() => {
+    if (!programId) return pendingDraft();
+    if (!program) return null;
+    return program.status === "finished" ? nextBlock(program, byId) : draftFrom(program);
   });
+  const [draft, setDraft] = useState(initial);
+  const left = useRef(false);
+  const navigation = useNavigation();
   const [picking, setPicking] = useState<{ day: number; slot?: number } | null>(null);
   const [gyms] = useState(() => listGyms(units));
+
+  const valid = () => {
+    if (!draft) return false;
+    if (!draft.days.some((d) => !d.slots.length)) return true;
+    Alert.alert("Empty day", "Give every day at least one exercise, or remove the day.");
+    return false;
+  };
+  /** Saves without starting: back into this program, or as a new saved one. */
+  const persist = () => {
+    if (!draft || !valid()) return false;
+    write(() =>
+      (kind === "saved" || kind === "active") && programId
+        ? updateProgram(programId, draft)
+        : saveProgram(draft)
+    );
+    return true;
+  };
+  const unsaved = !!draft && (kind === "new" || JSON.stringify(draft) !== JSON.stringify(initial));
+  usePreventRemove(unsaved, ({ data }) => {
+    const leave = () => navigation.dispatch(data.action);
+    if (left.current) return leave();
+    Alert.alert(kind === "new" ? "Keep this program?" : "Save changes?", undefined, [
+      { text: "Keep editing", style: "cancel" },
+      { text: "Discard", style: "destructive", onPress: leave },
+      {
+        text: kind === "new" || kind === "again" ? "Save for later" : "Save",
+        onPress: () => {
+          if (persist()) leave();
+        },
+      },
+    ]);
+  });
 
   const header = (
     <Stack.Screen
       options={{
         headerShown: true,
-        title: programId ? "Edit program" : "New program",
+        title: kind === "new" ? "New program" : kind === "again" ? "Run again" : "Edit program",
         headerBackButtonDisplayMode: "minimal",
         headerStyle: { backgroundColor: background },
         headerTintColor: foreground,
@@ -125,19 +174,36 @@ export function ProgramEditor({ programId }: { programId?: number }) {
     });
   };
 
+  const leave = () => {
+    left.current = true;
+    if (kind === "new") setPendingDraft(null);
+    router.dismissTo("/plan");
+  };
+  const start = () => {
+    if (!valid()) return;
+    const running = activeMeso();
+    const go = () => {
+      write(() => {
+        if (kind === "saved" && programId) {
+          updateProgram(programId, draft);
+          startSaved(programId);
+        } else startProgram(draft);
+      });
+      leave();
+    };
+    if (running && running.id !== programId)
+      Alert.alert(
+        `Start ${draft.name}?`,
+        `${running.name} ends. Workouts you did stay in History.`,
+        [
+          { text: "Cancel", style: "cancel" },
+          { text: "Start", onPress: go },
+        ]
+      );
+    else go();
+  };
   const save = () => {
-    if (draft.days.some((d) => !d.slots.length)) {
-      Alert.alert("Empty day", "Give every day at least one exercise, or remove the day.");
-      return;
-    }
-    if (programId) {
-      write(() => updateProgram(programId, draft));
-      router.back();
-    } else {
-      write(() => startProgram(draft));
-      setPendingDraft(null);
-      router.dismissTo("/plan");
-    }
+    if (persist()) leave();
   };
 
   const weeks = draft.rir.length;
@@ -327,7 +393,18 @@ export function ProgramEditor({ programId }: { programId?: number }) {
           </Text>
         </SystemPanel>
 
-        <SystemButton onPress={save}>{programId ? "Save" : "Start program"}</SystemButton>
+        {kind === "active" ? (
+          <SystemButton onPress={save}>Save</SystemButton>
+        ) : (
+          <View className="gap-2">
+            <SystemButton icon="play" onPress={start}>
+              Start program
+            </SystemButton>
+            <SystemButton variant="secondary" onPress={save}>
+              {kind === "saved" ? "Save" : "Save for later"}
+            </SystemButton>
+          </View>
+        )}
       </Screen>
       <ExercisePicker
         open={!!picking}
