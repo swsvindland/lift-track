@@ -1,8 +1,8 @@
 import { useRef, useState } from "react";
-import { Pressable, ScrollView, View } from "react-native";
+import { ScrollView, View } from "react-native";
 import { router } from "expo-router";
-import { twMerge } from "tailwind-merge";
-import { SystemButton, SystemIcon, SystemLabel, SystemText as Text } from "@/components/system";
+import { Switch } from "heroui-native";
+import { SystemButton, SystemLabel, SystemPanel, SystemText as Text } from "@/components/system";
 import { Choices, Editor, Field } from "@/components/ui";
 import { equipmentLabels, matchExercise, muscleLabels, primaryMuscles } from "@/lib/exercises";
 import { muscles, type Equipment, type Muscle } from "@/lib/exercises/types";
@@ -242,7 +242,16 @@ function OpenBuilder({ open, close }: Props) {
   );
 }
 
-/** Every muscle as a row; tap to pick. Once `full`, unpicked rows wait until one is dropped. */
+/** Muscles by body region, so a long list reads in chunks. */
+const regions: { name: string; muscles: Muscle[] }[] = [
+  { name: "Chest and back", muscles: ["chest", "lats", "upperBack", "traps"] },
+  { name: "Shoulders", muscles: ["frontDelts", "sideDelts", "rearDelts"] },
+  { name: "Arms", muscles: ["biceps", "triceps", "forearms"] },
+  { name: "Core", muscles: ["abs", "lowerBack"] },
+  { name: "Legs", muscles: ["glutes", "quads", "hamstrings", "adductors", "calves"] },
+];
+
+/** A switch per muscle, grouped by region. Once `full`, the others wait until one is turned off. */
 function MuscleList({
   note,
   options,
@@ -257,28 +266,30 @@ function MuscleList({
   onToggle: (m: Muscle) => void;
 }) {
   return (
-    <View>
-      <Text className="pb-2 text-sm text-muted">{note}</Text>
-      {options.map((m) => {
-        const on = selected.includes(m);
-        const disabled = full && !on;
+    <>
+      <Text className="text-sm text-muted">{note}</Text>
+      {regions.map((region) => {
+        const shown = region.muscles.filter((m) => options.includes(m));
+        if (!shown.length) return null;
         return (
-          <Pressable
-            key={m}
-            accessibilityRole="checkbox"
-            accessibilityState={{ checked: on, disabled }}
-            disabled={disabled}
-            onPress={() => onToggle(m)}
-            className={twMerge(
-              "min-h-12 flex-row items-center gap-3 border-b border-separator py-3 active:opacity-60",
-              disabled && "opacity-40"
-            )}
-          >
-            <Text className="flex-1 font-medium">{muscleLabels[m]}</Text>
-            {on && <SystemIcon name="checkmark" size={20} color="accent-soft-foreground" />}
-          </Pressable>
+          <View key={region.name} className="gap-2">
+            <SystemLabel>{region.name}</SystemLabel>
+            <SystemPanel className="gap-4">
+              {shown.map((m) => (
+                <View key={m} className="flex-row items-center justify-between gap-4">
+                  <Text className="flex-1">{muscleLabels[m]}</Text>
+                  <Switch
+                    accessibilityLabel={muscleLabels[m]}
+                    isSelected={selected.includes(m)}
+                    isDisabled={full && !selected.includes(m)}
+                    onSelectedChange={() => onToggle(m)}
+                  />
+                </View>
+              ))}
+            </SystemPanel>
+          </View>
         );
       })}
-    </View>
+    </>
   );
 }
