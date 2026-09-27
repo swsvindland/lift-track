@@ -102,7 +102,30 @@
       "reactCompiler": true
     },
     "extra": {
-      "router": {}
+      "router": {},
+      "eas": {
+        "build": {
+          "experimental": {
+            "ios": {
+              "appExtensions": [
+                {
+                  "targetName": "LiveActivity",
+                  "bundleIdentifier": "dev.svindland.vector.lift.LiveActivity",
+                  "entitlements": {}
+                },
+                {
+                  "bundleIdentifier": "dev.svindland.vector.lift.watchkitapp",
+                  "targetName": "LiftWatch",
+                  "entitlements": {
+                    "com.apple.developer.healthkit": true
+                  }
+                }
+              ]
+            }
+          }
+        },
+        "projectId": "8ca11604-7812-4cb4-bd5f-909d3d16bc9d"
+      }
     }
   }
 }
