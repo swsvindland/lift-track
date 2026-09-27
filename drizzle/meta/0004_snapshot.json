@@ -1,8 +1,8 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "056c51b8-6b26-47b6-a57e-19350a541364",
-  "prevId": "2e27cd5f-dfcf-4d77-b751-6f0ceb729ad2",
+  "id": "c5ed6c67-dc3f-4088-8d49-ed2b5ee71592",
+  "prevId": "31b8d74d-fc78-4ebe-a810-5cbdc686d2df",
   "tables": {
     "ai_nudges": {
       "name": "ai_nudges",
@@ -296,6 +296,22 @@
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
+        },
+        "excluded": {
+          "name": "excluded",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'[]'"
+        },
+        "included": {
+          "name": "included",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'[]'"
         },
         "archived": {
           "name": "archived",
@@ -610,6 +626,13 @@
           "autoincrement": false,
           "default": "'[]'"
         },
+        "gym_id": {
+          "name": "gym_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
         "method": {
           "name": "method",
           "type": "integer",
@@ -640,7 +663,21 @@
         }
       },
       "indexes": {},
-      "foreignKeys": {},
+      "foreignKeys": {
+        "mesocycles_gym_id_gyms_id_fk": {
+          "name": "mesocycles_gym_id_gyms_id_fk",
+          "tableFrom": "mesocycles",
+          "tableTo": "gyms",
+          "columnsFrom": [
+            "gym_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "checkConstraints": {}
@@ -1098,6 +1135,14 @@
         },
         "deload": {
           "name": "deload",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": false
+        },
+        "travel": {
+          "name": "travel",
           "type": "integer",
           "primaryKey": false,
           "notNull": true,

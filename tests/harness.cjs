@@ -76,9 +76,13 @@ function lift() {
     "./strength": strength,
   });
   const volume = load("src/lib/volume.ts", { "./strength": strength });
-  const builder = load("src/lib/program-builder.ts", { "./progression": progression });
+  const builder = load("src/lib/program-builder.ts", {
+    "./exercises": exercises,
+    "./progression": progression,
+  });
   const programs = load("src/lib/programs.ts", {
     "@/db": { db, ...schema },
+    "./exercises": exercises,
     "./progression": progression,
     "./strength": strength,
     "./workouts": workouts,

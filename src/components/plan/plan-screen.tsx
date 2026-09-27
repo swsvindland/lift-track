@@ -29,6 +29,9 @@ import {
   weekRir,
   type SessionCell,
 } from "@/lib/programs";
+import { useStore } from "@/lib/store";
+import { trainingGym } from "@/lib/workouts";
+import { TravelBanner, TravelSheet } from "@/components/gyms/travel";
 import { ProgramBuilderSheet } from "./program-builder-sheet";
 import { ImportSheet } from "./import-sheet";
 import { useStartSession } from "./use-start-session";
@@ -39,6 +42,8 @@ const weekLabel = (detail: { rir: number[]; deload: boolean }, week: number) =>
 export function PlanScreen() {
   const [building, setBuilding] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [traveling, setTraveling] = useState(false);
+  const { units } = useStore();
   const begin = useStartSession();
   const { byId } = useExercises();
   const data = useQuery(() => {
@@ -50,9 +55,10 @@ export function PlanScreen() {
       progress: detail ? programProgress(detail) : [],
       next: detail ? nextSession(detail) : undefined,
       previous: previous ? programDetail(previous.id) : undefined,
+      at: trainingGym(units, detail?.gymId),
     };
-  });
-  const { detail, progress, next } = data;
+  }, [units]);
+  const { detail, progress, next, at } = data;
 
   if (!detail)
     return (
@@ -147,6 +153,12 @@ export function PlanScreen() {
                     onPress: () => setImporting(true),
                   },
                   {
+                    key: "travel",
+                    label: at.travel ? "Change trip" : "I'm traveling",
+                    icon: "airplane-outline",
+                    onPress: () => setTraveling(true),
+                  },
+                  {
                     key: "end",
                     label: "End program",
                     icon: "stop-circle-outline",
@@ -167,6 +179,7 @@ export function PlanScreen() {
           />
         }
       >
+        <TravelBanner onEdit={() => setTraveling(true)} />
         {next ? (
           <SystemPanel className="gap-3 bg-accent-soft">
             <SystemLabel className="text-accent-soft-foreground">
@@ -175,6 +188,12 @@ export function PlanScreen() {
             <Text className="text-xl font-semibold">
               {dayName(next.dayId)} · {weekLabel(detail, next.week)}
             </Text>
+            {next.state !== "open" && (
+              <Text className="text-sm text-muted">
+                At {at.gym.name}
+                {at.travel ? ", with stand-ins for what it doesn't have" : ""}
+              </Text>
+            )}
             <SystemButton
               icon="play"
               onPress={() =>
@@ -259,6 +278,7 @@ export function PlanScreen() {
       </Screen>
       <ProgramBuilderSheet open={building} close={() => setBuilding(false)} />
       <ImportSheet open={importing} close={() => setImporting(false)} />
+      <TravelSheet open={traveling} close={() => setTraveling(false)} />
     </>
   );
 }

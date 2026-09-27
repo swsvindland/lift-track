@@ -35,14 +35,18 @@ Everything stays on the phone: no account, no server, no analytics and no networ
   - Each exercise has a strength chart with 1W–All ranges and a press-and-drag readout, and the weight screen has a trend chart.
   - All workouts (history by week) open from here, and any workout can be opened, edited, repeated or deleted.
 - **Exercises:**
-  - 253 curated, rep-based exercises with primary and secondary muscles (secondary counts as half a set) across 17 muscles, including front, side and rear delts.
+  - 258 curated, rep-based exercises with primary and secondary muscles (secondary counts as half a set) across 17 muscles, including front, side and rear delts.
   - Search understands gym shorthand ("rdl", "db", "ohp") and one-letter typos.
   - Muscle and favorite filters.
   - Each exercise has a best e1RM, its history, favorite and avoid flags, and a rest length.
   - You can add custom exercises, which are archived rather than deleted.
-- **Gym & plates:** kg or lb plates you own, bar weight, dumbbell step and heaviest dumbbell, machine step, and the equipment the gym has. Swap suggestions only offer equipment the gym has and skip exercises marked Avoid.
+- **Gyms:**
+  - Keep several gyms. Each starts from a preset (No gym, Hotel, Apartment, Home, Full gym), then you set its equipment and leave out or add single exercises (a full gym with no kettlebells or no leg press).
+  - Each has kg or lb plates, a bar weight, a dumbbell step and heaviest dumbbell, and a machine step.
+  - Swap suggestions only offer what the gym can do and skip exercises marked Avoid.
+  - **Traveling:** pick the gym you'll use and your last day there. Program sessions swap in the closest exercises that gym can do, and loads round to its equipment. Back home, loads pick up from before you left. See [gyms and travel](docs/progression.md#gyms-and-travel).
 - **Programs (Plan tab):**
-  - Build a mesocycle from five questions: days a week, minutes, training age, weeks before the deload, and muscles to bring up. The builder uses your gym's equipment, favorites and Avoid list, and starts volume low. Edit anything before starting.
+  - Build a mesocycle for one of your gyms from five questions: days a week, minutes, training age, weeks before the deload, and muscles to bring up. The builder uses what that gym can do, your favorites and your Avoid list, and starts volume low. Edit anything before starting.
   - Every set of a session is prescribed (load, reps, reps in reserve) from your last performance and the week's RIR target, rounded to loads your gym can make, with a one-line reason.
   - After a session, one optional tap per muscle (Easy / Good / Hard / Too much / Hurt) sets next week's volume; without it, hitting your reps does.
   - Deload week at the end.
@@ -104,6 +108,7 @@ Tests run real SQLite through the production Drizzle driver. They cover:
 - progression, the program builder and a program run week by week (see [programs and progression](docs/progression.md))
 - supersets, reorder and swap
 - weekly volume
+- gym presets, left-out and added exercises, stand-ins, and a trip that adapts sessions and leaves home loads alone
 - health sync, including workout export, rewrite on edit and removal
 - backup encryption, exact restore, rejected files, erase and CSV
 - workout and program text parsing, exercise matching, model fallbacks and schemas

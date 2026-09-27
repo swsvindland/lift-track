@@ -14,7 +14,10 @@ function withBackup(ctx) {
   });
 }
 
-/** A realistic history: a gym, a program with a finished session, feedback, a custom exercise. */
+/**
+ * A realistic history: a main gym and a hotel gym, a program with a finished session done while
+ * traveling, feedback, a custom exercise.
+ */
 function seed(ctx) {
   const { workouts, programs, builder, exercises, loads, db } = ctx;
   const types = load("src/lib/exercises/types.ts");
@@ -24,6 +27,8 @@ function seed(ctx) {
   db.insert(schema.preferences)
     .values({ key: "activeGym", value: String(gym.id) })
     .run();
+  const hotel = workouts.addGym({ ...loads.presetGym("hotel", "lb"), included: ["custom-abc"] });
+  workouts.startTravel(hotel, "2999-01-01");
   db.insert(schema.weightEntries)
     .values({ weightKg: 82.5, measuredAt: "2026-09-01T07:00:00Z" })
     .run();
@@ -59,9 +64,15 @@ function seed(ctx) {
     },
     all
   );
-  const mesoId = programs.startProgram(draft);
+  const mesoId = programs.startProgram({ ...draft, gymId: gym.id });
   const detail = programs.programDetail(mesoId);
-  const w = programs.startSession(detail, 0, detail.days[0].id, { gym, bodyWeightKg: 82.5, byId });
+  const w = programs.startSession(detail, 0, detail.days[0].id, {
+    gym: workouts.gymById(hotel),
+    travel: true,
+    bodyWeightKg: 82.5,
+    byId,
+    exercises: all,
+  });
   for (const block of workouts.workoutDetail(w).exercises)
     for (const s of block.sets) {
       workouts.updateSet(s.id, { weightKg: 40, rir: 2 });
@@ -164,6 +175,10 @@ test("a backup restores every training record exactly, on another phone", async 
   assert.equal(pref("healthSyncEnabled"), "false");
   assert.equal(pref("recoveryBackupUri"), "file:///recovery.json");
   assert.ok(pref("activeGym"));
+  // A trip names a gym by id; restored gyms start at home.
+  assert.equal(pref("travel"), undefined);
+  assert.equal(from.workouts.travelPlan().gym.name, "Hotel gym");
+  assert.equal(to.workouts.travelPlan(), undefined);
   // The restored program runs on: week-one day B was skipped, so week two day A is next.
   const detail = to.programs.programDetail(to.programs.activeMeso().id);
   const next = to.programs.nextSession(detail);
@@ -171,6 +186,32 @@ test("a backup restores every training record exactly, on another phone", async 
   const summary = withBackup(to).backupSummary(restored);
   assert.equal(summary.workouts, 1);
   assert.equal(summary.programs, 1);
+});
+
+test("a backup from before gyms had exceptions and trips still restores", () => {
+  const from = lift();
+  seed(from);
+  const old = withBackup(from).createBackup();
+  for (const gym of old.data.gyms) {
+    delete gym.excluded;
+    delete gym.included;
+  }
+  for (const meso of old.data.mesocycles) delete meso.gymId;
+  for (const workout of old.data.workouts) delete workout.travel;
+  const to = lift();
+  withBackup(to).restoreBackup(old);
+  for (const gym of to.db.select().from(schema.gyms).all()) {
+    assert.deepEqual(gym.excluded, []);
+    assert.deepEqual(gym.included, []);
+  }
+  assert.equal(to.programs.activeMeso().gymId, null);
+  assert.ok(
+    to.db
+      .select()
+      .from(schema.workouts)
+      .all()
+      .every((w) => w.travel === false)
+  );
 });
 
 test("inconsistent or foreign files are rejected before anything changes", () => {
@@ -184,6 +225,7 @@ test("inconsistent or foreign files are rejected before anything changes", () =>
     (b) => b.data.workouts.push({ ...b.data.workouts[0] }),
     (b) => (b.data.customExercises[0].id = "../../etc"),
     (b) => (b.data.gyms[0].plates = []),
+    (b) => (b.data.mesocycles[0].gymId = 424242),
     (b) => (b.format = "macro-track-backup"),
     (b) => (b.data.extra = []),
   ];

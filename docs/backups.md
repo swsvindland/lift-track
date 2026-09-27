@@ -11,7 +11,7 @@ The file contains:
 - every workout with its exercises and sets, including what was prescribed
 - programs, their days and slots, skipped sessions and muscle feedback
 - custom exercises and per-exercise settings (favorite, avoid, rest)
-- gyms and which one is active
+- gyms, with their left-out and added exercises, and which one is your main gym
 - body weights
 
 It leaves out:
@@ -19,6 +19,7 @@ It leaves out:
 - the bundled exercise library, which comes with the app
 - appearance, units and language
 - the running rest timer
+- a trip in progress (a restore ends it)
 - Health permissions
 
 It keeps two kinds of Health link, so sync doesn't duplicate anything:

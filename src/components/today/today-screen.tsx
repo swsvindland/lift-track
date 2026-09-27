@@ -17,13 +17,14 @@ import { useExercises } from "@/lib/exercise-store";
 import { dayLabel, duration, rirText, weightText } from "@/lib/format";
 import { activeMeso, isDeloadWeek, nextSession, programDetail, weekRir } from "@/lib/programs";
 import { useStartSession } from "@/components/plan/use-start-session";
+import { TravelBanner } from "@/components/gyms/travel";
 import { useStore } from "@/lib/store";
 import { setsPerMuscle, weekStart } from "@/lib/volume";
 import {
-  activeGym,
   activeWorkout,
   finishedWorkouts,
   startWorkout,
+  trainingGym,
   workoutDetail,
   workoutsBetween,
 } from "@/lib/workouts";
@@ -75,7 +76,8 @@ export function TodayScreen() {
 
   const startProgramSession = useStartSession();
   const begin = (from?: number) => {
-    write(() => startWorkout({ gymId: activeGym(units).id, from }));
+    const { gym, travel } = trainingGym(units);
+    write(() => startWorkout({ gymId: gym.id, travel, from }));
     router.push("/workout");
   };
 
@@ -88,6 +90,7 @@ export function TodayScreen() {
         day: "numeric",
       })}
     >
+      {!data.open && <TravelBanner />}
       {data.open ? (
         <SystemPanel className="gap-3 bg-accent-soft">
           <SystemLabel className="text-accent-soft-foreground">Workout in progress</SystemLabel>

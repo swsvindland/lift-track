@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "2e27cd5f-dfcf-4d77-b751-6f0ceb729ad2",
+  "id": "31b8d74d-fc78-4ebe-a810-5cbdc686d2df",
   "prevId": "1edc9555-47bd-4375-92df-b6fa10655dc4",
   "tables": {
     "custom_exercises": {
@@ -215,6 +215,22 @@
           "notNull": true,
           "autoincrement": false
         },
+        "excluded": {
+          "name": "excluded",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'[]'"
+        },
+        "included": {
+          "name": "included",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'[]'"
+        },
         "archived": {
           "name": "archived",
           "type": "integer",
@@ -317,9 +333,7 @@
       "indexes": {
         "meso_days_meso": {
           "name": "meso_days_meso",
-          "columns": [
-            "meso_id"
-          ],
+          "columns": ["meso_id"],
           "isUnique": false
         }
       },
@@ -328,12 +342,8 @@
           "name": "meso_days_meso_id_mesocycles_id_fk",
           "tableFrom": "meso_days",
           "tableTo": "mesocycles",
-          "columnsFrom": [
-            "meso_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["meso_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -380,12 +390,8 @@
           "name": "meso_skips_meso_id_mesocycles_id_fk",
           "tableFrom": "meso_skips",
           "tableTo": "mesocycles",
-          "columnsFrom": [
-            "meso_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["meso_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -393,12 +399,8 @@
           "name": "meso_skips_day_id_meso_days_id_fk",
           "tableFrom": "meso_skips",
           "tableTo": "meso_days",
-          "columnsFrom": [
-            "day_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["day_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -463,9 +465,7 @@
       "indexes": {
         "meso_slots_day": {
           "name": "meso_slots_day",
-          "columns": [
-            "day_id"
-          ],
+          "columns": ["day_id"],
           "isUnique": false
         }
       },
@@ -474,12 +474,8 @@
           "name": "meso_slots_day_id_meso_days_id_fk",
           "tableFrom": "meso_slots",
           "tableTo": "meso_days",
-          "columnsFrom": [
-            "day_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["day_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -528,6 +524,13 @@
           "autoincrement": false,
           "default": "'[]'"
         },
+        "gym_id": {
+          "name": "gym_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
         "method": {
           "name": "method",
           "type": "integer",
@@ -558,7 +561,17 @@
         }
       },
       "indexes": {},
-      "foreignKeys": {},
+      "foreignKeys": {
+        "mesocycles_gym_id_gyms_id_fk": {
+          "name": "mesocycles_gym_id_gyms_id_fk",
+          "tableFrom": "mesocycles",
+          "tableTo": "gyms",
+          "columnsFrom": ["gym_id"],
+          "columnsTo": ["id"],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "checkConstraints": {}
@@ -591,24 +604,14 @@
           "name": "rating",
           "type": "text",
           "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "soreness": {
-          "name": "soreness",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
+          "notNull": true,
           "autoincrement": false
         }
       },
       "indexes": {
         "muscle_feedback_workout_muscle": {
           "name": "muscle_feedback_workout_muscle",
-          "columns": [
-            "workout_id",
-            "muscle"
-          ],
+          "columns": ["workout_id", "muscle"],
           "isUnique": true
         }
       },
@@ -617,12 +620,8 @@
           "name": "muscle_feedback_workout_id_workouts_id_fk",
           "tableFrom": "muscle_feedback",
           "tableTo": "workouts",
-          "columnsFrom": [
-            "workout_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["workout_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -708,13 +707,6 @@
           "notNull": false,
           "autoincrement": false
         },
-        "effort": {
-          "name": "effort",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
         "side": {
           "name": "side",
           "type": "text",
@@ -754,9 +746,7 @@
       "indexes": {
         "sets_workout_exercise": {
           "name": "sets_workout_exercise",
-          "columns": [
-            "workout_exercise_id"
-          ],
+          "columns": ["workout_exercise_id"],
           "isUnique": false
         }
       },
@@ -765,12 +755,8 @@
           "name": "sets_workout_exercise_id_workout_exercises_id_fk",
           "tableFrom": "sets",
           "tableTo": "workout_exercises",
-          "columnsFrom": [
-            "workout_exercise_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["workout_exercise_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -902,16 +888,12 @@
       "indexes": {
         "workout_exercises_workout": {
           "name": "workout_exercises_workout",
-          "columns": [
-            "workout_id"
-          ],
+          "columns": ["workout_id"],
           "isUnique": false
         },
         "workout_exercises_exercise": {
           "name": "workout_exercises_exercise",
-          "columns": [
-            "exercise_id"
-          ],
+          "columns": ["exercise_id"],
           "isUnique": false
         }
       },
@@ -920,12 +902,8 @@
           "name": "workout_exercises_workout_id_workouts_id_fk",
           "tableFrom": "workout_exercises",
           "tableTo": "workouts",
-          "columnsFrom": [
-            "workout_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["workout_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -933,12 +911,8 @@
           "name": "workout_exercises_slot_id_meso_slots_id_fk",
           "tableFrom": "workout_exercises",
           "tableTo": "meso_slots",
-          "columnsFrom": [
-            "slot_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["slot_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         }
@@ -1022,6 +996,14 @@
           "autoincrement": false,
           "default": false
         },
+        "travel": {
+          "name": "travel",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": false
+        },
         "note": {
           "name": "note",
           "type": "text",
@@ -1041,9 +1023,7 @@
       "indexes": {
         "workouts_started": {
           "name": "workouts_started",
-          "columns": [
-            "started_at"
-          ],
+          "columns": ["started_at"],
           "isUnique": false
         }
       },
@@ -1052,12 +1032,8 @@
           "name": "workouts_gym_id_gyms_id_fk",
           "tableFrom": "workouts",
           "tableTo": "gyms",
-          "columnsFrom": [
-            "gym_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["gym_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         },
@@ -1065,12 +1041,8 @@
           "name": "workouts_meso_id_mesocycles_id_fk",
           "tableFrom": "workouts",
           "tableTo": "mesocycles",
-          "columnsFrom": [
-            "meso_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["meso_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         },
@@ -1078,12 +1050,8 @@
           "name": "workouts_meso_day_id_meso_days_id_fk",
           "tableFrom": "workouts",
           "tableTo": "meso_days",
-          "columnsFrom": [
-            "meso_day_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["meso_day_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         }

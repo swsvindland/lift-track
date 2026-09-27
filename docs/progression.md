@@ -25,7 +25,7 @@ Sessions run in order: week 1 day 1, week 1 day 2, and so on. A missed day is no
 
 ## Building one
 
-You answer four questions: days a week (2–6), minutes a session, training age and weeks before the deload. Two pages then list every muscle: pick up to three to bring up, then any of the rest to bring down. The split follows the days:
+You pick the gym it's for, then answer four questions: days a week (2–6), minutes a session, training age and weeks before the deload. Two pages then list every muscle: pick up to three to bring up, then any of the rest to bring down. The split follows the days:
 
 - 2–3 days: full body A/B(/C)
 - 4 days: upper/lower ×2
@@ -44,7 +44,7 @@ Exercises are picked in this order:
 2. A preferred list of well-tolerated, easily loaded choices.
 3. Anything else in the library for that movement and muscle.
 
-Only equipment your gym has is used, and exercises marked Avoid are skipped. A movement used twice in a week alternates between its first two choices.
+Only exercises the chosen gym can do are used (see [Gyms and travel](#gyms-and-travel)), and exercises marked Avoid are skipped. A movement used twice in a week alternates between its first two choices. When a small gym has nothing for a listed movement, any movement it can do for the same muscle fills the slot, so a bodyweight-only day still gets several exercises.
 
 Week one starts low:
 
@@ -123,6 +123,31 @@ Missing reps overrides positive feedback: good feedback holds instead of adding 
 
 A set is added to the slot with the fewest sets for that muscle, and taken from the one with the most. Limits: a slot has 1–6 sets, and a muscle gets at most 10 primary sets in one session. "Hurt" also deserves a swap; the exercise menu offers one.
 
+## Gyms and travel
+
+You can keep several gyms. Each starts from a preset and can then be changed:
+
+| Preset        | Equipment                                     | Heaviest dumbbell | Left out                                    |
+| ------------- | --------------------------------------------- | ----------------- | ------------------------------------------- |
+| No gym        | Bodyweight                                    | –                 | Moves that need a bar, dip station or bench |
+| Hotel gym     | Dumbbells, bodyweight                         | 24 kg / 50 lb     | The same                                    |
+| Apartment gym | Dumbbells, cable, machines, Smith, bodyweight | 34 kg / 75 lb     | A few big machines                          |
+| Home gym      | Barbell, dumbbells, bodyweight, bands         | 40 kg / 90 lb     | A GHD, captain's chair, 45° bench           |
+| Full gym      | Everything                                    | 50 kg / 120 lb    | Nothing                                     |
+
+Equipment decides most of what a gym can do. On top of that, single exercises can be left out (a full gym without a leg press) or added (a hotel's one cable station). A gym's bar, plates and steps decide which loads it can make.
+
+One gym is your main gym. A program remembers the gym it was built for, and its sessions run there. Free workouts run at your main gym.
+
+**Traveling** names another gym and the last day there. Until that day ends:
+
+- Program sessions run at the travel gym. A slot whose exercise it can't do gets a stand-in for that session only: the closest exercise the gym can do, by movement pattern, then by primary muscles, skipping Avoid and anything already in the day. The workout shows "In place of …". An exercise with no stand-in stays and is flagged, so you can swap or remove it.
+- Stand-ins keep the slot, so their sets count toward the muscle and next week's sets move from them as usual. The program keeps its place in the weeks.
+- Loads round to the travel gym, capped at its heaviest dumbbell.
+- The workouts are marked as travel. When working out loads, sessions from the same side of the trip come first. Away, the last trip's loads set the pace. Back home, the loads from before you left do, so a lighter week with hotel dumbbells doesn't pull them down.
+
+The trip ends by itself after its last day, or earlier with **I'm back**.
+
 ## Deload
 
 The final week halves last week's sets (rounding up) and uses 90% of the last top load at the bottom of the rep range with 4 reps in reserve. Deload sessions are ignored when the next block works out its loads.
@@ -162,3 +187,12 @@ Tests (`tests/programs.test.cjs`) cover:
 - bodyweight reps without a body weight
 - soreness caps and where they're answered
 - running a block again
+
+Tests (`tests/gyms.test.cjs`) cover:
+
+- the presets and a gym's left-out and added exercises
+- converting a gym between kg and lb
+- programs built for each preset
+- stand-ins
+- the main gym, removing gyms, and trips ending on their own
+- a week at a hotel and home loads resuming afterwards

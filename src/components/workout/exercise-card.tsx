@@ -39,6 +39,8 @@ export function ExerciseCard({
   onUndo,
   advice,
   ai,
+  standsInFor,
+  missingAt,
   nextName,
 }: {
   block: ExerciseBlock;
@@ -58,6 +60,10 @@ export function ExerciseCard({
   advice?: string;
   /** What the phone's model changed from a note, with a way to take it back. */
   ai?: { reason: string; undo: () => void };
+  /** The program's exercise this one replaces today, e.g. because the gym can't do it. */
+  standsInFor?: string;
+  /** The gym's name when it can't do this exercise and nothing stood in for it. */
+  missingAt?: string;
   /** The exercise after this one, named in the rest timer once this one is done. */
   nextName?: string;
 }) {
@@ -119,6 +125,10 @@ export function ExerciseCard({
               .join(", ")}{" "}
             · {block.repMin}–{block.repMax} reps
           </Text>
+          {!!missingAt && (
+            <Text className="text-sm text-warning">Not at {missingAt}. Swap or remove it.</Text>
+          )}
+          {!!standsInFor && <Text className="text-sm text-muted">In place of {standsInFor}</Text>}
           {!!advice && <Text className="text-sm text-accent-soft-foreground">{advice}</Text>}
           {ai && (
             <View className="flex-row items-center gap-1.5">

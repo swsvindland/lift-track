@@ -13,11 +13,12 @@ import {
   type Gym,
   type MesoDay,
   type MesoSlot,
+  type ExerciseSetting,
   type Mesocycle,
   type Soreness,
   type Workout,
 } from "@/db";
-import type { Exercise } from "./exercises";
+import { standIns, type Exercise } from "./exercises";
 import type { Muscle } from "./exercises/types";
 import type { ProgramDraft } from "./program-builder";
 import { DELOAD_RIR, METHOD, prescribe, type Advice, type AiApplied } from "./progression";
@@ -108,6 +109,7 @@ export function startProgram(draft: ProgramDraft, options: { deload?: boolean } 
         rir: draft.rir,
         deload: options.deload ?? true,
         deprioritized: draft.deprioritized ?? [],
+        gymId: draft.gymId ?? null,
         method: METHOD,
         status: "active",
         startedAt: now(),
@@ -144,6 +146,7 @@ export function draftFrom(detail: ProgramDetail): ProgramDraft {
     name: detail.name,
     rir: detail.rir,
     deprioritized: detail.deprioritized,
+    gymId: detail.gymId,
     days: detail.days.map((d) => ({
       name: d.name,
       slots: d.slots.map((s) => ({
@@ -202,7 +205,11 @@ export function nextBlock(detail: ProgramDetail, byId: (id: string) => Exercise)
 export function updateProgram(id: number, draft: ProgramDraft) {
   db.transaction((tx) => {
     tx.update(mesocycles)
-      .set({ name: draft.name, rir: draft.rir })
+      .set({
+        name: draft.name,
+        rir: draft.rir,
+        ...(draft.gymId !== undefined && { gymId: draft.gymId }),
+      })
       .where(eq(mesocycles.id, id))
       .run();
     const existing = programDetail(id);
@@ -516,19 +523,34 @@ function previousSession(mesoId: number, dayId: number, week: number) {
   return { previous: workoutDetail(found.id), found, feedback, soreness };
 }
 
-/** Completed working sets from the last non-deload session that did an exercise. */
-export const lastComparable = (exerciseId: string, excludeWorkout?: number) =>
-  comparableSessions(exerciseId, { limit: 1, excludeWorkout })[0] ?? [];
+/**
+ * Completed working sets from the last non-deload session that did an exercise. Sessions from
+ * the same side of a trip come first (see {@link comparableSessions}).
+ */
+export const lastComparable = (exerciseId: string, excludeWorkout?: number, travel = false) =>
+  comparableSessions(exerciseId, { limit: 1, excludeWorkout, travel })[0] ?? [];
+
+export type SessionContext = {
+  gym?: Gym;
+  bodyWeightKg?: number | null;
+  byId: (id: string) => Exercise;
+  /** Away from your usual gym; the workout is marked so its loads stay with the trip. */
+  travel?: boolean;
+  /** With these, exercises the gym can't do become the closest ones it can, for this session. */
+  exercises?: Exercise[];
+  settings?: ExerciseSetting[];
+};
 
 /**
  * Starts a program session with every set prescribed. Returns the open workout instead when one
- * is already running with exercises in it; an empty one is discarded first.
+ * is already running with exercises in it; an empty one is discarded first. A slot whose exercise
+ * the gym can't do gets a stand-in that keeps the slot, so its sets still count and progress.
  */
 export function startSession(
   detail: ProgramDetail,
   week: number,
   dayId: number,
-  context: { gym?: Gym; bodyWeightKg?: number | null; byId: (id: string) => Exercise }
+  context: SessionContext
 ): number {
   const open = activeWorkout();
   if (open) {
@@ -548,6 +570,11 @@ export function startSession(
   );
   const plan = planDay(detail, day, week, previous, feedback, context.byId, soreness, nudges);
   const reasons = new Map(found ? nudgesFor(found.id).map((n) => [n.id, n.reason]) : []);
+  const planned = plan.map(({ slot }) => context.byId(slot.exerciseId));
+  const chosen =
+    context.gym && context.exercises
+      ? standIns(planned, context.exercises, context.gym, context.settings)
+      : planned;
   return db.transaction((tx) => {
     const workoutId = tx
       .insert(workouts)
@@ -560,18 +587,24 @@ export function startSession(
         mesoWeek: week,
         mesoDayId: day.id,
         deload,
+        travel: context.travel ?? false,
         updatedAt: Date.now(),
       })
       .returning()
       .get().id;
     plan.forEach(({ slot, sets: count, ai, aiIds }, position) => {
-      const exercise = context.byId(slot.exerciseId);
-      const [last = [], ...history] = comparableSessions(slot.exerciseId);
-      const nudge = deload ? undefined : exerciseNudge(slot.exerciseId, workoutId);
+      const exercise = chosen[position];
+      // A stand-in trains in its own rep range, as a swap does.
+      const reps: [number, number] =
+        exercise.id === slot.exerciseId
+          ? [slot.repMin, slot.repMax]
+          : [exercise.reps[0], exercise.reps[1]];
+      const [last = [], ...history] = comparableSessions(exercise.id, { travel: context.travel });
+      const nudge = deload ? undefined : exerciseNudge(exercise.id, workoutId);
       const result = prescribe({
         exercise,
         gym: context.gym,
-        reps: [slot.repMin, slot.repMax],
+        reps,
         rir,
         sets: count,
         last,
@@ -585,10 +618,10 @@ export function startSession(
         .insert(workoutExercises)
         .values({
           workoutId,
-          exerciseId: slot.exerciseId,
+          exerciseId: exercise.id,
           position,
-          repMin: slot.repMin,
-          repMax: slot.repMax,
+          repMin: reps[0],
+          repMax: reps[1],
           slotId: slot.id,
           advice,
         })
@@ -694,7 +727,10 @@ export function swapInSession(
       .orderBy(asc(sets.position))
       .all()
       .filter((s) => s.kind === "working");
-    const [last = [], ...history] = comparableSessions(exercise.id, { excludeWorkout: workout.id });
+    const [last = [], ...history] = comparableSessions(exercise.id, {
+      excludeWorkout: workout.id,
+      travel: workout.travel,
+    });
     const result = prescribe({
       exercise,
       gym: context.gym,
@@ -766,6 +802,7 @@ export function undoAi(workoutExerciseId: number, byId: (id: string) => Exercise
         : undefined;
       const [last = [], ...history] = comparableSessions(block.exerciseId, {
         excludeWorkout: workout.id,
+        travel: workout.travel,
       });
       const result = prescribe({
         exercise: byId(block.exerciseId),

@@ -2,7 +2,13 @@ import { useRef, useState } from "react";
 import { ScrollView, View } from "react-native";
 import { router } from "expo-router";
 import { Switch } from "heroui-native";
-import { SystemButton, SystemLabel, SystemPanel, SystemText as Text } from "@/components/system";
+import {
+  Chip,
+  SystemButton,
+  SystemLabel,
+  SystemPanel,
+  SystemText as Text,
+} from "@/components/system";
 import { Choices, Editor, Field } from "@/components/ui";
 import { equipmentLabels, matchExercise, muscleLabels, primaryMuscles } from "@/lib/exercises";
 import { muscles, type Equipment, type Muscle } from "@/lib/exercises/types";
@@ -19,7 +25,8 @@ import {
   type SessionMinutes,
 } from "@/lib/program-builder";
 import { useStore } from "@/lib/store";
-import { activeGym } from "@/lib/workouts";
+import { activeGym, listGyms } from "@/lib/workouts";
+import { gymSummary } from "@/components/gyms/gym-summary";
 
 const dayOptions = ["2", "3", "4", "5", "6"] as const;
 const minuteOptions = sessionMinutes.map(String) as `${SessionMinutes}`[];
@@ -50,6 +57,8 @@ function OpenBuilder({ open, close }: Props) {
   const [experience, setExperience] = useState<Experience>("intermediate");
   const [priorities, setPriorities] = useState<Muscle[]>([]);
   const [deprioritized, setDeprioritized] = useState<Muscle[]>([]);
+  const [gyms] = useState(() => listGyms(units));
+  const [gymId, setGymId] = useState(() => activeGym(units).id);
   const [step, setStep] = useState(0);
   const scrollRef = useRef<ScrollView>(null);
   const [wish, setWish] = useState("");
@@ -95,6 +104,7 @@ function OpenBuilder({ open, close }: Props) {
   };
 
   const build = () => {
+    const gym = gyms.find((g) => g.id === gymId) ?? activeGym(units);
     const draft = buildProgram(
       {
         days: Number(days),
@@ -103,9 +113,9 @@ function OpenBuilder({ open, close }: Props) {
         experience,
         priorities,
         deprioritized: deprioritized.filter((m) => !priorities.includes(m)),
-        equipment: kit
-          ? activeGym(units).equipment.filter((e) => kit.includes(e))
-          : activeGym(units).equipment,
+        equipment: kit ? gym.equipment.filter((e) => kit.includes(e)) : gym.equipment,
+        excluded: gym.excluded,
+        included: gym.included,
         settings: [
           ...settings,
           ...avoid
@@ -121,7 +131,7 @@ function OpenBuilder({ open, close }: Props) {
       },
       all
     );
-    setPendingDraft(draft);
+    setPendingDraft({ ...draft, gymId: gym.id });
     close();
     router.push("/program");
   };
@@ -193,6 +203,22 @@ function OpenBuilder({ open, close }: Props) {
             )}
           </View>
           <View className="gap-2">
+            <SystemLabel>Gym</SystemLabel>
+            <View className="flex-row flex-wrap gap-2">
+              {gyms.map((g) => (
+                <Chip
+                  key={g.id}
+                  label={g.name}
+                  selected={g.id === gymId}
+                  onPress={() => setGymId(g.id)}
+                />
+              ))}
+            </View>
+            <Text className="text-sm text-muted">
+              {gymSummary(gyms.find((g) => g.id === gymId) ?? gyms[0])}. Add gyms in Settings.
+            </Text>
+          </View>
+          <View className="gap-2">
             <SystemLabel>Days a week</SystemLabel>
             <Choices values={dayOptions} value={days} onChange={setDays} label={(d) => d} />
             <Text className="text-sm text-muted">{splits[Number(days)].name}</Text>
@@ -239,8 +265,8 @@ function OpenBuilder({ open, close }: Props) {
             onToggle={(m) => toggle(deprioritized, setDeprioritized, m)}
           />
           <Text className="text-sm text-muted">
-            Exercises come from your gym&apos;s equipment and skip ones marked Avoid. You can change
-            anything next.
+            Exercises come from the gym you picked and skip ones marked Avoid. When you travel,
+            sessions swap in what the other gym has. You can change anything next.
           </Text>
         </>
       )}

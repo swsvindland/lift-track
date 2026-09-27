@@ -3,6 +3,7 @@ import { Alert, Pressable, View } from "react-native";
 import { router, Stack } from "expo-router";
 import { useThemeColor } from "heroui-native";
 import {
+  Chip,
   SystemButton,
   SystemIconButton,
   SystemLabel,
@@ -20,7 +21,7 @@ import type { DraftSlot, ProgramDraft } from "@/lib/program-builder";
 import { rirPlan } from "@/lib/progression";
 import { draftFrom, programDetail, startProgram, updateProgram } from "@/lib/programs";
 import { useStore } from "@/lib/store";
-import { activeGym } from "@/lib/workouts";
+import { activeGym, listGyms } from "@/lib/workouts";
 
 const MAX_SETS = 8;
 
@@ -81,6 +82,7 @@ export function ProgramEditor({ programId }: { programId?: number }) {
     return pendingDraft();
   });
   const [picking, setPicking] = useState<{ day: number; slot?: number } | null>(null);
+  const [gyms] = useState(() => listGyms(units));
 
   const header = (
     <Stack.Screen
@@ -139,6 +141,7 @@ export function ProgramEditor({ programId }: { programId?: number }) {
   };
 
   const weeks = draft.rir.length;
+  const gym = gyms.find((g) => g.id === draft.gymId) ?? activeGym(units);
   return (
     <>
       <Screen title="Program" nativeHeader>
@@ -148,6 +151,24 @@ export function ProgramEditor({ programId }: { programId?: number }) {
           value={draft.name}
           onChange={(name) => change((d) => void (d.name = name))}
         />
+        {gyms.length > 1 && (
+          <View className="gap-2">
+            <SystemLabel>Gym</SystemLabel>
+            <View className="flex-row flex-wrap gap-2">
+              {gyms.map((g) => (
+                <Chip
+                  key={g.id}
+                  label={g.name}
+                  selected={g.id === gym.id}
+                  onPress={() => change((d) => void (d.gymId = g.id))}
+                />
+              ))}
+            </View>
+            <Text className="text-sm text-muted">
+              Sessions swap in stand-ins for exercises this gym can&apos;t do.
+            </Text>
+          </View>
+        )}
         <View className="gap-2">
           <SystemLabel>Weeks before the deload</SystemLabel>
           <View className="flex-row items-center justify-between">
@@ -318,7 +339,7 @@ export function ProgramEditor({ programId }: { programId?: number }) {
             ? byId(draft.days[picking.day].slots[picking.slot].exerciseId)
             : undefined
         }
-        equipment={activeGym(units).equipment}
+        gym={gym}
       />
     </>
   );

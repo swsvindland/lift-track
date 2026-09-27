@@ -21,6 +21,90 @@ const allEquipment: Equipment[] = [
   "band",
 ];
 
+/** Bodyweight moves that need a bar, dip station, bench or roller most rooms don't have. */
+const needsApparatus = [
+  "pull-up",
+  "chin-up",
+  "neutral-grip-pull-up",
+  "chest-dip",
+  "triceps-dip",
+  "inverted-row",
+  "hanging-leg-raise",
+  "hanging-knee-raise",
+  "captains-chair-knee-raise",
+  "toes-to-bar",
+  "back-extension-45",
+  "glute-ham-raise",
+  "ab-wheel-rollout",
+  "decline-sit-up",
+];
+
+export const gymKinds = ["none", "hotel", "apartment", "home", "full"] as const;
+export type GymKind = (typeof gymKinds)[number];
+
+/** Starting points for a new gym; every one can be changed afterwards. */
+export const gymPresets: Record<
+  GymKind,
+  {
+    name: string;
+    description: string;
+    equipment: Equipment[];
+    dumbbellMax: { kg: number; lb: number };
+    excluded: string[];
+  }
+> = {
+  none: {
+    name: "No gym",
+    description: "Bodyweight only: a floor, a chair and a wall.",
+    equipment: ["bodyweight"],
+    dumbbellMax: { kg: 20, lb: 50 },
+    excluded: needsApparatus,
+  },
+  hotel: {
+    name: "Hotel gym",
+    description: "A dumbbell rack and a bench.",
+    equipment: ["dumbbell", "bodyweight"],
+    dumbbellMax: { kg: 24, lb: 50 },
+    excluded: needsApparatus,
+  },
+  apartment: {
+    name: "Apartment gym",
+    description: "Dumbbells, a cable station, a Smith machine and a few machines.",
+    equipment: ["dumbbell", "cable", "machine", "smith", "bodyweight"],
+    dumbbellMax: { kg: 34, lb: 75 },
+    excluded: ["glute-ham-raise", "captains-chair-knee-raise", "donkey-calf-raise"],
+  },
+  home: {
+    name: "Home gym",
+    description: "A rack with a barbell and plates, dumbbells, a pull-up bar and bands.",
+    equipment: ["barbell", "dumbbell", "bodyweight", "band"],
+    dumbbellMax: { kg: 40, lb: 90 },
+    excluded: ["glute-ham-raise", "captains-chair-knee-raise", "back-extension-45"],
+  },
+  full: {
+    name: "Full gym",
+    description: "A commercial gym with every kind of equipment.",
+    equipment: allEquipment,
+    dumbbellMax: { kg: 50, lb: 120 },
+    excluded: [],
+  },
+};
+
+export type NewGym = GymSetup & { name: string; excluded: string[]; included: string[] };
+
+/** A new gym from a preset, with plates and steps typical for the unit. */
+export function presetGym(kind: GymKind, unit: "kg" | "lb"): NewGym {
+  const preset = gymPresets[kind];
+  return {
+    ...defaultGym(unit),
+    name: preset.name,
+    dumbbellMax: preset.dumbbellMax[unit],
+    equipment: [...preset.equipment],
+    excluded: [...preset.excluded],
+    included: [],
+  };
+}
+
 /** A typical commercial gym, in the user's unit. */
 export function defaultGym(unit: "kg" | "lb"): GymSetup & { name: string } {
   return unit === "kg"
@@ -44,6 +128,30 @@ export function defaultGym(unit: "kg" | "lb"): GymSetup & { name: string } {
         machineStep: 10,
         equipment: allEquipment,
       };
+}
+
+/**
+ * A gym moved to the other unit. Plates don't convert, so the bar, plates and steps become the
+ * typical ones; the heaviest dumbbell converts to the nearest step so a small rack stays small.
+ */
+export function convertGym(gym: GymSetup, unit: "kg" | "lb"): Omit<GymSetup, "equipment"> {
+  if (gym.unit === unit) {
+    const { barWeight, plates, dumbbellStep, dumbbellMax, machineStep } = gym;
+    return { unit, barWeight, plates, dumbbellStep, dumbbellMax, machineStep };
+  }
+  const typical = defaultGym(unit);
+  const heaviest = toGymUnit(fromGymUnit(gym.dumbbellMax, gym.unit), unit);
+  return {
+    unit,
+    barWeight: typical.barWeight,
+    plates: typical.plates,
+    dumbbellStep: typical.dumbbellStep,
+    dumbbellMax: Math.max(
+      typical.dumbbellStep,
+      Math.round(heaviest / typical.dumbbellStep) * typical.dumbbellStep
+    ),
+    machineStep: typical.machineStep,
+  };
 }
 
 export const toGymUnit = (kg: number, unit: "kg" | "lb") => (unit === "kg" ? kg : kg / LB);

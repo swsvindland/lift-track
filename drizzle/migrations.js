@@ -4,8 +4,8 @@ import journal from "./meta/_journal.json";
 import m0000 from "./0000_init.sql";
 import m0001 from "./0001_programs.sql";
 import m0002 from "./0002_deprioritized.sql";
-import m0003 from "./0003_effort_soreness.sql";
-import m0004 from "./0004_ai_nudges.sql";
+import m0003 from "./0003_gyms_travel.sql";
+import m0004 from "./0004_effort_soreness_nudges.sql";
 
 export default {
   journal,

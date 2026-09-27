@@ -88,7 +88,7 @@ test("swaps stay on the movement, respect the gym's equipment and skip avoided e
   const all = exercises.allExercises([]);
   const bench = all.find((e) => e.id === "barbell-bench-press");
   const dumbbellsOnly = exercises.substitutes(bench, all, {
-    equipment: ["dumbbell", "bodyweight"],
+    gym: { equipment: ["dumbbell", "bodyweight"] },
   });
   assert.ok(dumbbellsOnly.length > 0);
   assert.ok(dumbbellsOnly.every((e) => ["dumbbell", "bodyweight"].includes(e.equipment)));

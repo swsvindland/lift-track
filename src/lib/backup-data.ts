@@ -91,6 +91,9 @@ const dataSchema = z.strictObject({
       dumbbellMax: z.number().finite().positive().max(1000),
       machineStep: z.number().finite().positive().max(100),
       equipment: z.array(z.enum(equipment)).max(equipment.length),
+      // Added later; older backups have neither.
+      excluded: z.array(text.min(1).max(100)).max(10000).optional(),
+      included: z.array(text.min(1).max(100)).max(10000).optional(),
       archived: z.boolean(),
     }),
     100
@@ -102,6 +105,7 @@ const dataSchema = z.strictObject({
       rir: z.array(z.number().int().min(0).max(10)).min(1).max(12),
       deload: z.boolean(),
       deprioritized: z.array(z.enum(muscles)).max(muscles.length).optional(),
+      gymId: id.nullable().optional(),
       method: z.number().int().min(1).max(100),
       status: z.enum(["active", "finished"]),
       startedAt: iso,
@@ -139,6 +143,7 @@ const dataSchema = z.strictObject({
       mesoWeek: z.number().int().min(0).max(20).nullable(),
       mesoDayId: id.nullable(),
       deload: z.boolean(),
+      travel: z.boolean().optional(),
       note: text,
       updatedAt: timestamp,
       // The Health workout this one was saved as, so restoring doesn't save it twice.
@@ -235,6 +240,8 @@ const schema = z
       fail("Duplicate exercise settings");
     const has = (set: Set<number>, value: number | null) => value === null || set.has(value);
     if (data.mesoDays.some((d) => !mesoIds.has(d.mesoId))) fail("Program day without program");
+    if (data.mesocycles.some((m) => !has(gymIds, m.gymId ?? null)))
+      fail("Program refers to a missing gym");
     if (data.mesoSlots.some((s) => !dayIds.has(s.dayId) || s.repMin > s.repMax))
       fail("Invalid program slot");
     if (data.mesoSkips.some((s) => !mesoIds.has(s.mesoId) || !dayIds.has(s.dayId)))
@@ -431,6 +438,8 @@ export function restoreBackup(value: unknown, recoveryUri?: string) {
     setPreference(tx, "lastSync", "");
     tx.delete(preferences).where(eq(preferences.key, "installation")).run();
     tx.delete(preferences).where(eq(preferences.key, "restTimer")).run();
+    // A trip names a gym by id, and the restored gyms may not be the same ones.
+    tx.delete(preferences).where(eq(preferences.key, "travel")).run();
   });
 }
 

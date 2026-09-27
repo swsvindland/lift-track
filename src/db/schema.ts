@@ -67,6 +67,10 @@ export const gyms = sqliteTable("gyms", {
   dumbbellMax: real("dumbbell_max").notNull(),
   machineStep: real("machine_step").notNull(),
   equipment: text("equipment", { mode: "json" }).$type<Equipment[]>().notNull(),
+  /** Exercises this gym can't do although it has their equipment, e.g. no leg press. */
+  excluded: text("excluded", { mode: "json" }).$type<string[]>().notNull().default([]),
+  /** Exercises this gym can do although their equipment isn't listed, e.g. one cable station. */
+  included: text("included", { mode: "json" }).$type<string[]>().notNull().default([]),
   archived: integer("archived", { mode: "boolean" }).notNull().default(false),
 });
 export type Gym = typeof gyms.$inferSelect;
@@ -80,6 +84,8 @@ export const mesocycles = sqliteTable("mesocycles", {
   deload: integer("deload", { mode: "boolean" }).notNull().default(true),
   /** Muscles brought down: they start at low volume and never gain sets week to week. */
   deprioritized: text("deprioritized", { mode: "json" }).$type<Muscle[]>().notNull().default([]),
+  /** The gym it was built for; sessions use it unless you're traveling. Null means your main gym. */
+  gymId: integer("gym_id").references(() => gyms.id, { onDelete: "set null" }),
   /** Progression method version, so later changes don't reinterpret old blocks. */
   method: integer("method").notNull(),
   status: text("status", { enum: ["active", "finished"] }).notNull(),
@@ -195,6 +201,8 @@ export const workouts = sqliteTable(
     mesoWeek: integer("meso_week"),
     mesoDayId: integer("meso_day_id").references(() => mesoDays.id, { onDelete: "set null" }),
     deload: integer("deload", { mode: "boolean" }).notNull().default(false),
+    /** Done while traveling; loads here don't set the pace for your usual gym. */
+    travel: integer("travel", { mode: "boolean" }).notNull().default(false),
     note: text("note").notNull().default(""),
     updatedAt: integer("updated_at").notNull(),
   },
