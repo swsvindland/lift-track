@@ -1,0 +1,13 @@
+diff --git a/ios/ExpoQuickActionsModule.swift b/ios/ExpoQuickActionsModule.swift
+index 252da492ce374eef886d574a2c38af242de6d6c3..12a29e419f4c2a4ca0861c257bbba55fc7eb11c9 100644
+--- a/ios/ExpoQuickActionsModule.swift
++++ b/ios/ExpoQuickActionsModule.swift
+@@ -71,7 +71,7 @@ func toActionObject(item: UIApplicationShortcutItem?) -> ActionObject? {
+     )
+ }
+ 
+-var initialAction: UIApplicationShortcutItem?
++public var initialAction: UIApplicationShortcutItem?
+ 
+ public class ExpoQuickActionsModule: Module {
+     

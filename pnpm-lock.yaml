@@ -5,6 +5,7 @@ settings:
   excludeLinksFromLockfile: false
 
 patchedDependencies:
+  expo-quick-actions@6.0.2: e7eea377ff3994e4d1c897ed717d538b490868a0d2fc0d48ef8ca76d294f96fc
   react-native-health-connect@4.1.3: 60e842a5f4d97de30835eb31f88e9dd62fc476e918f5b18d0ab626c75709667a
 
 importers:
@@ -88,7 +89,7 @@ importers:
         version: 57.0.21(expo@57.0.18)(react-native@0.86.2(@babel/core@7.29.7(supports-color@8.1.1))(@react-native/metro-config@0.86.2(@babel/core@7.29.7(supports-color@8.1.1))(supports-color@8.1.1))(@types/react@19.2.18)(react@19.2.3)(supports-color@8.1.1))(react@19.2.3)(supports-color@8.1.1)(typescript@6.0.3)
       expo-quick-actions:
         specifier: ^6.0.2
-        version: 6.0.2(expo@57.0.18)(supports-color@8.1.1)(typescript@6.0.3)
+        version: 6.0.2(patch_hash=e7eea377ff3994e4d1c897ed717d538b490868a0d2fc0d48ef8ca76d294f96fc)(expo@57.0.18)(supports-color@8.1.1)(typescript@6.0.3)
       expo-router:
         specifier: ~57.0.2
         version: 57.0.17(83610a59356d1a08041f3793f29fbe07)
@@ -8726,7 +8727,7 @@ snapshots:
       - supports-color
       - typescript
 
-  expo-quick-actions@6.0.2(expo@57.0.18)(supports-color@8.1.1)(typescript@6.0.3):
+  expo-quick-actions@6.0.2(patch_hash=e7eea377ff3994e4d1c897ed717d538b490868a0d2fc0d48ef8ca76d294f96fc)(expo@57.0.18)(supports-color@8.1.1)(typescript@6.0.3):
     dependencies:
       '@expo/image-utils': 0.8.17(supports-color@8.1.1)(typescript@6.0.3)
       expo: 57.0.18(@babel/core@7.29.7(supports-color@8.1.1))(@expo/dom-webview@57.0.1)(@expo/metro-runtime@57.0.14)(expo-router@57.0.17)(react-dom@19.2.3(react@19.2.3))(react-native-worklets@0.10.1(@babel/core@7.29.7(supports-color@8.1.1))(@react-native/metro-config@0.86.2(@babel/core@7.29.7(supports-color@8.1.1))(supports-color@8.1.1))(react-native@0.86.2(@babel/core@7.29.7(supports-color@8.1.1))(@react-native/metro-config@0.86.2(@babel/core@7.29.7(supports-color@8.1.1))(supports-color@8.1.1))(@types/react@19.2.18)(react@19.2.3)(supports-color@8.1.1))(react@19.2.3)(supports-color@8.1.1))(react-native@0.86.2(@babel/core@7.29.7(supports-color@8.1.1))(@react-native/metro-config@0.86.2(@babel/core@7.29.7(supports-color@8.1.1))(supports-color@8.1.1))(@types/react@19.2.18)(react@19.2.3)(supports-color@8.1.1))(react@19.2.3)(supports-color@8.1.1)(typescript@6.0.3)
