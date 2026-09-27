@@ -16,8 +16,9 @@ import {
   searchExercises,
   substitutes,
   type Exercise,
+  type GymAccess,
 } from "@/lib/exercises";
-import { muscles, type Equipment, type Muscle } from "@/lib/exercises/types";
+import { muscles, type Muscle } from "@/lib/exercises/types";
 import { useExercises } from "@/lib/exercise-store";
 import { exerciseUsage } from "@/lib/workouts";
 import { describeExercise } from "@/lib/lift-ai";
@@ -70,14 +71,15 @@ export function ExercisePicker({
   close,
   onPick,
   replacing,
-  equipment,
+  gym,
   title = "Add exercise",
 }: {
   open: boolean;
   close: () => void;
   onPick: (exercise: Exercise) => void;
   replacing?: Exercise;
-  equipment?: readonly Equipment[];
+  /** Similar exercises are limited to what this gym can do. */
+  gym?: GymAccess;
   title?: string;
 }) {
   const [query, setQuery] = useState("");
@@ -100,9 +102,9 @@ export function ExercisePicker({
   const similar = useMemo(
     () =>
       replacing && !query && !muscle
-        ? substitutes(replacing, all, { equipment, settings, limit: 8 })
+        ? substitutes(replacing, all, { gym, settings, limit: 8 })
         : [],
-    [replacing, query, muscle, all, equipment, settings]
+    [replacing, query, muscle, all, gym, settings]
   );
   const pick = (exercise: Exercise) => {
     onPick(exercise);

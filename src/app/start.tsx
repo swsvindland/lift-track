@@ -5,7 +5,7 @@ import { write } from "@/lib/data";
 import { useExercises } from "@/lib/exercise-store";
 import { activeMeso, nextSession, programDetail, startSession } from "@/lib/programs";
 import { useStore } from "@/lib/store";
-import { activeGym, activeWorkout, startWorkout } from "@/lib/workouts";
+import { activeWorkout, startWorkout, trainingGym } from "@/lib/workouts";
 
 /**
  * lifttrack://start (a quick action, Shortcuts or the Action Button): resume the open workout,
@@ -14,7 +14,7 @@ import { activeGym, activeWorkout, startWorkout } from "@/lib/workouts";
 export default function Start() {
   const { empty } = useLocalSearchParams<{ empty?: string }>();
   const { units, weights } = useStore();
-  const { byId } = useExercises();
+  const { all, byId, settings } = useExercises();
   const started = useRef(false);
   useEffect(() => {
     if (started.current) return;
@@ -23,19 +23,23 @@ export default function Start() {
       const meso = empty ? undefined : activeMeso();
       const detail = meso ? programDetail(meso.id) : undefined;
       const next = detail ? nextSession(detail) : undefined;
-      const gym = activeGym(units);
+      // A program session runs at the program's gym; a free workout at your main one.
+      const { gym, travel } = trainingGym(units, next ? detail?.gymId : undefined);
       write(() =>
         detail && next
           ? startSession(detail, next.week, next.dayId, {
               gym,
+              travel,
               bodyWeightKg: weights[0]?.weightKg ?? null,
               byId,
+              exercises: all,
+              settings,
             })
-          : startWorkout({ gymId: gym.id })
+          : startWorkout({ gymId: gym.id, travel })
       );
     }
     router.replace("/workout");
-  }, [empty, units, weights, byId]);
+  }, [empty, units, weights, all, byId, settings]);
   return (
     <View className="flex-1 items-center justify-center bg-background">
       <ActivityIndicator />

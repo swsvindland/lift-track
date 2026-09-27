@@ -18,10 +18,10 @@ import { dayLabel, duration, estimateText, loadText, setText, totalText } from "
 import { useStore } from "@/lib/store";
 import { countsAsWork } from "@/lib/strength";
 import {
-  activeGym,
   activeWorkout,
   discardWorkout,
   startWorkout,
+  trainingGym,
   workoutDetail,
   workoutRecords,
 } from "@/lib/workouts";
@@ -109,9 +109,8 @@ export function SessionScreen({ id, finished }: { id: number; finished: boolean 
             icon="repeat"
             isDisabled={!!activeWorkout()}
             onPress={() => {
-              write(() =>
-                startWorkout({ gymId: detail.gymId ?? activeGym(units).id, from: detail.id })
-              );
+              const { gym, travel } = trainingGym(units, detail.gymId);
+              write(() => startWorkout({ gymId: gym.id, travel, from: detail.id }));
               router.replace("/workout");
             }}
           >

@@ -13,8 +13,8 @@ import {
   type WorkoutExercise,
   type WorkoutSet,
 } from "@/db";
-import { defaultGym } from "./loads";
-import type { Units } from "./metrics";
+import { defaultGym, type NewGym } from "./loads";
+import { localDay, type Units } from "./metrics";
 import { countsAsWork, e1rm } from "./strength";
 
 /* Every write here is one small transaction, so a workout survives the app being killed
@@ -26,11 +26,22 @@ const touch = (workoutId: number) =>
 
 // ——— Gyms ———
 
+const preference = (key: string) =>
+  db.select().from(preferences).where(eq(preferences.key, key)).get()?.value;
+const setPreference = (key: string, value: string) =>
+  db
+    .insert(preferences)
+    .values({ key, value })
+    .onConflictDoUpdate({ target: preferences.key, set: { value } })
+    .run();
+
+const openGyms = () =>
+  db.select().from(gyms).where(eq(gyms.archived, false)).orderBy(asc(gyms.id)).all();
+
+/** Your main gym: workouts use it unless a program names another or you're traveling. */
 export function activeGym(units: Units): Gym {
-  const chosen = Number(
-    db.select().from(preferences).where(eq(preferences.key, "activeGym")).get()?.value
-  );
-  const all = db.select().from(gyms).where(eq(gyms.archived, false)).orderBy(asc(gyms.id)).all();
+  const chosen = Number(preference("activeGym"));
+  const all = openGyms();
   const found = all.find((g) => g.id === chosen) ?? all[0];
   if (found) return found;
   return db
@@ -40,10 +51,81 @@ export function activeGym(units: Units): Gym {
     .get();
 }
 
+/** Every gym you keep, the main one included, oldest first. */
+export function listGyms(units: Units): Gym[] {
+  activeGym(units);
+  return openGyms();
+}
+
 export const gymById = (id: number) => db.select().from(gyms).where(eq(gyms.id, id)).get();
 
 export function updateGym(id: number, patch: Partial<Omit<Gym, "id">>) {
   db.update(gyms).set(patch).where(eq(gyms.id, id)).run();
+}
+
+export function addGym(gym: NewGym): number {
+  return db.insert(gyms).values(gym).returning().get().id;
+}
+
+export function setMainGym(id: number) {
+  setPreference("activeGym", String(id));
+}
+
+/**
+ * Removes a gym from the list. It's archived, not deleted, because past workouts name it; a
+ * trip to it ends. The last gym stays.
+ */
+export function archiveGym(id: number): boolean {
+  if (openGyms().length <= 1) return false;
+  db.transaction(() => {
+    db.update(gyms).set({ archived: true }).where(eq(gyms.id, id)).run();
+    if (travelPreference()?.gymId === id) endTravel();
+  });
+  return true;
+}
+
+// ——— Travel ———
+
+export type Travel = { gym: Gym; until: string };
+
+function travelPreference(): { gymId: number; until: string } | undefined {
+  try {
+    const value = JSON.parse(preference("travel") ?? "null");
+    return Number.isInteger(value?.gymId) && typeof value?.until === "string" ? value : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** The trip in progress: which gym and the last day there. Over once that day has passed. */
+export function travelPlan(today = localDay()): Travel | undefined {
+  const plan = travelPreference();
+  if (!plan || plan.until < today) return undefined;
+  const gym = gymById(plan.gymId);
+  return gym && !gym.archived ? { gym, until: plan.until } : undefined;
+}
+
+/** Trains at another gym through `until` (a local day, inclusive); then everything is as before. */
+export function startTravel(gymId: number, until: string) {
+  setPreference("travel", JSON.stringify({ gymId, until }));
+}
+
+export function endTravel() {
+  db.delete(preferences).where(eq(preferences.key, "travel")).run();
+}
+
+/**
+ * Where a workout happens: the travel gym while away, otherwise the gym asked for (a program's)
+ * while you still keep it, otherwise your main gym.
+ */
+export function trainingGym(
+  units: Units,
+  preferred?: number | null
+): { gym: Gym; travel: boolean } {
+  const trip = travelPlan();
+  if (trip) return { gym: trip.gym, travel: true };
+  const asked = preferred ? gymById(preferred) : undefined;
+  return { gym: asked && !asked.archived ? asked : activeGym(units), travel: false };
 }
 
 // ——— Reading ———
@@ -228,7 +310,9 @@ function latestBodyWeight() {
 }
 
 /** Starts a workout, or returns the one already open: there is only ever one. */
-export function startWorkout(options: { gymId?: number; name?: string; from?: number } = {}) {
+export function startWorkout(
+  options: { gymId?: number; name?: string; from?: number; travel?: boolean } = {}
+) {
   const open = activeWorkout();
   if (open) return open.id;
   return db.transaction((tx) => {
@@ -238,6 +322,7 @@ export function startWorkout(options: { gymId?: number; name?: string; from?: nu
         name: options.name ?? "",
         startedAt: now(),
         gymId: options.gymId ?? null,
+        travel: options.travel ?? false,
         bodyWeightKg: latestBodyWeight(),
         updatedAt: Date.now(),
       })
