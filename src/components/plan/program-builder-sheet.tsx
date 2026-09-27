@@ -11,18 +11,24 @@ import { useModel } from "@/lib/use-model";
 import { AiMark } from "@/components/ai-mark";
 import { useExercises } from "@/lib/exercise-store";
 import { setPendingDraft } from "@/lib/draft-store";
-import { buildProgram, splits, type Experience } from "@/lib/program-builder";
+import {
+  buildProgram,
+  sessionMinutes,
+  splits,
+  type Experience,
+  type SessionMinutes,
+} from "@/lib/program-builder";
 import { useStore } from "@/lib/store";
 import { activeGym } from "@/lib/workouts";
 
 const dayOptions = ["2", "3", "4", "5", "6"] as const;
-const minuteOptions = ["45", "60", "75", "90"] as const;
+const minuteOptions = sessionMinutes.map(String) as `${SessionMinutes}`[];
 const weekOptions = ["4", "5", "6"] as const;
 const experienceOptions = ["beginner", "intermediate", "advanced"] as const;
 const experienceLabels: Record<Experience, string> = {
-  beginner: "Under a year",
-  intermediate: "1–3 years",
-  advanced: "3+ years",
+  beginner: "< 1",
+  intermediate: "1–3",
+  advanced: "3+",
 };
 
 const MAX_PRIORITIES = 3;
@@ -92,7 +98,7 @@ function OpenBuilder({ open, close }: Props) {
     const draft = buildProgram(
       {
         days: Number(days),
-        minutes: Number(minutes) as 45 | 60 | 75 | 90,
+        minutes: Number(minutes) as SessionMinutes,
         weeks: Number(weeks),
         experience,
         priorities,
@@ -201,7 +207,7 @@ function OpenBuilder({ open, close }: Props) {
             />
           </View>
           <View className="gap-2">
-            <SystemLabel>Lifting for</SystemLabel>
+            <SystemLabel>Years lifting</SystemLabel>
             <Choices
               values={experienceOptions}
               value={experience}

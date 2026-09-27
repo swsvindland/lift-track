@@ -244,6 +244,8 @@ test("the builder fits the gym, the session length and priorities", () => {
     for (const [m, total] of Object.entries(totals))
       assert.ok(total <= builder.startingVolume.intermediate, `${days} days: ${m} ${total}`);
   }
+  for (const day of builder.buildProgram({ ...base, days: 4, minutes: 30 }, all).days)
+    assert.equal(day.slots.length, 4, `30 minutes: ${day.name}`);
   const upperLower = builder.buildProgram({ ...base, days: 4 }, all);
   assert.deepEqual(
     upperLower.days.map((d) => d.name),

@@ -7,9 +7,11 @@ import { rirPlan } from "./progression";
    a draft the user can edit comes out. */
 
 export type Experience = "beginner" | "intermediate" | "advanced";
+export const sessionMinutes = [30, 45, 60, 75, 90] as const;
+export type SessionMinutes = (typeof sessionMinutes)[number];
 export type BuilderInput = {
   days: number;
-  minutes: 45 | 60 | 75 | 90;
+  minutes: SessionMinutes;
   experience: Experience;
   weeks: number;
   /** Muscles to bring up: always trained, a set more, a higher starting cap. */
@@ -228,7 +230,7 @@ const preferred: Partial<Record<Pattern, string[]>> = {
   shrug: ["db-shrug", "barbell-shrug", "machine-shrug", "cable-shrug"],
 };
 
-const slotsFor = { 45: 5, 60: 6, 75: 7, 90: 8 } as const;
+const slotsFor: Record<SessionMinutes, number> = { 30: 4, 45: 5, 60: 6, 75: 7, 90: 8 };
 
 /**
  * Picks an exercise for a movement: the preferred list first, then anything in the library with

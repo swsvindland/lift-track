@@ -8,7 +8,7 @@ import {
   type Muscle,
   type Pattern,
 } from "./exercises/types";
-import type { Experience } from "./program-builder";
+import { sessionMinutes, type Experience, type SessionMinutes } from "./program-builder";
 import type { JsonSchema } from "./model-json";
 import { parseProgramText, type ParsedProgram } from "./program-text";
 import { toKg, type Units } from "./metrics";
@@ -249,7 +249,7 @@ export async function readProgram(
 
 export type BuilderHints = {
   days?: number;
-  minutes?: 45 | 60 | 75 | 90;
+  minutes?: SessionMinutes;
   experience?: Experience;
   weeks?: number;
   priorities: Muscle[];
@@ -297,7 +297,7 @@ const hintsSchema: JsonSchema = {
 };
 
 const snapMinutes = (m: number) =>
-  ([45, 60, 75, 90] as const).reduce((a, b) => (Math.abs(b - m) < Math.abs(a - m) ? b : a));
+  sessionMinutes.reduce((a: SessionMinutes, b) => (Math.abs(b - m) < Math.abs(a - m) ? b : a));
 
 /** Numbers are read directly; muscles, equipment and injuries need the model. */
 export async function readBuilderHints(text: string, generate?: Generate): Promise<BuilderHints> {
@@ -307,7 +307,7 @@ export async function readBuilderHints(text: string, generate?: Generate): Promi
   if (days) hints.days = Math.min(6, Math.max(2, +days[1]));
   const minutes =
     /(\d{2,3})\s*(?:min|minutes)/.exec(lower) ??
-    (/(an?|one)\s*hour/.test(lower) ? ["", "60"] : null);
+    (/half an? hour/.test(lower) ? ["", "30"] : /(an?|one)\s*hour/.test(lower) ? ["", "60"] : null);
   if (minutes) hints.minutes = snapMinutes(+minutes[1]);
   const weeks = /(\d)\s*weeks?/.exec(lower);
   if (weeks) hints.weeks = Math.min(6, Math.max(4, +weeks[1]));

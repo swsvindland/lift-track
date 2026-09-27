@@ -25,7 +25,7 @@ You answer four questions: days a week (2–6), minutes a session, training age 
 - 5 days: upper, lower, push, pull, legs
 - 6 days: push/pull/legs ×2
 
-Each day lists movements in order of importance. A 45-minute session takes the first 5, 60 minutes 6, 75 minutes 7 and 90 minutes 8. Advanced lifters get one more.
+Each day lists movements in order of importance. A 30-minute session takes the first 4, 45 minutes 5, 60 minutes 6, 75 minutes 7 and 90 minutes 8. Advanced lifters get one more.
 
 A muscle brought up always keeps its movement and gets one extra set. The least important other movement makes room for it.
 
