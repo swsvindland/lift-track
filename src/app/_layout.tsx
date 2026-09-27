@@ -13,6 +13,7 @@ import { StoreProvider } from "@/lib/store";
 import { db } from "@/db";
 import { shareDatabaseCopy } from "@/lib/data-files";
 import { prepareRestNotifications, settleRest } from "@/lib/rest-timer";
+import { WatchLink } from "@/components/watch-link";
 
 import "../global.css";
 
@@ -91,6 +92,7 @@ export default function RootLayout(): JSX.Element {
             <Stack.Screen name="workout" options={{ presentation: "modal" }} />
             <Stack.Screen name="start" options={{ presentation: "modal", animation: "none" }} />
           </Stack>
+          <WatchLink />
         </StoreProvider>
         <ThemedStatusBar />
       </HeroUINativeProvider>

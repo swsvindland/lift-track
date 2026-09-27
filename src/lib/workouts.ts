@@ -638,6 +638,15 @@ export function rateSet(setId: number, effort: Effort | null) {
 
 export const setById = (setId: number) => db.select().from(sets).where(eq(sets.id, setId)).get();
 
+/** Whether a rest follows an exercise: inside a superset, only after its last exercise. */
+export const restsAfter = (blocks: Pick<WorkoutExercise, "supersetGroup">[], index: number) =>
+  blocks[index].supersetGroup === null ||
+  blocks[index + 1]?.supersetGroup !== blocks[index].supersetGroup;
+
+/** What the rest after a set leads to: more of this exercise, else the next one. */
+export const restLabel = (block: ExerciseBlock, setId: number, name: string, nextName?: string) =>
+  `Next: ${block.sets.some((s) => s.id !== setId && !s.completedAt && s.kind !== "warmup") || !nextName ? name : nextName}`;
+
 /**
  * Checks a set off. Values not typed are taken from its targets, so a set done as
  * prescribed is one tap. Returns false when there is nothing to record yet.

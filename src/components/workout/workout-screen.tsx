@@ -21,6 +21,7 @@ import {
   lastPerformance,
   renameWorkout,
   replaceExercise,
+  restsAfter,
   tidyWorkout,
   workoutDetail,
 } from "@/lib/workouts";
@@ -150,7 +151,6 @@ export function WorkoutScreen({ workoutId }: { workoutId?: number }) {
     ]);
   };
 
-  const groups = detail.exercises.map((b) => b.supersetGroup);
   const header = (
     <View className="flex-row items-center gap-1">
       <SystemIconButton
@@ -245,7 +245,6 @@ export function WorkoutScreen({ workoutId }: { workoutId?: number }) {
       <Screen title="Workout" header={header} footer={footer} compact>
         {detail.exercises.map((block, index) => {
           const exercise = byId(block.exerciseId);
-          const inGroup = block.supersetGroup !== null;
           // Past sessions may predate a permanent swap, so only the open one names its plan.
           const planned =
             !editingPast && block.slotId !== null ? program?.planned.get(block.slotId) : undefined;
@@ -260,7 +259,7 @@ export function WorkoutScreen({ workoutId }: { workoutId?: number }) {
               restSeconds={settingFor(exercise.id)?.restSeconds}
               isFirst={index === 0}
               isLast={index === detail.exercises.length - 1}
-              restAfter={!inGroup || groups[index + 1] !== block.supersetGroup}
+              restAfter={restsAfter(detail.exercises, index)}
               onSwap={() => setPicker({ replacing: block.id })}
               advice={adviceText(block.advice, units)}
               ai={

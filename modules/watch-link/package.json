@@ -1,0 +1,9 @@
+{
+  "name": "watch-link",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Apple Watch connection: sends the open workout to the Watch and takes back its commands",
+  "license": "UNLICENSED",
+  "author": "Sam Svindland",
+  "homepage": "https://github.com/swsvindland/lift-track"
+}
