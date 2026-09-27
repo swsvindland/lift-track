@@ -200,18 +200,29 @@ export function searchExercises(
   return scored.sort((a, b) => b.score - a.score).map((s) => s.exercise);
 }
 
+/** What a gym can do: its equipment, less exercises it can't do, plus ones it can anyway. */
+export type GymAccess = {
+  equipment: readonly Equipment[];
+  excluded?: readonly string[];
+  included?: readonly string[];
+};
+
+export const canDoAt = (exercise: Pick<Exercise, "id" | "equipment">, gym: GymAccess) =>
+  !!gym.included?.includes(exercise.id) ||
+  (gym.equipment.includes(exercise.equipment) && !gym.excluded?.includes(exercise.id));
+
 /**
  * Candidates to replace an exercise: same pattern first, then others that train its primary
- * muscles, filtered to the gym's equipment and away from exercises marked to avoid.
+ * muscles, filtered to what the gym can do and away from exercises marked to avoid.
  */
 export function substitutes(
   exercise: Exercise,
   exercises: Exercise[],
-  options: { equipment?: readonly Equipment[]; settings?: ExerciseSetting[]; limit?: number } = {}
+  options: { gym?: GymAccess; settings?: ExerciseSetting[]; limit?: number } = {}
 ): Exercise[] {
   const avoid = new Set(options.settings?.filter((s) => s.avoid).map((s) => s.exerciseId));
   const favorite = new Set(options.settings?.filter((s) => s.favorite).map((s) => s.exerciseId));
-  const available = options.equipment ? new Set(options.equipment) : null;
+  const gym = options.gym;
   const primary = primaryMuscles(exercise);
   const overlap = (other: Exercise) =>
     primary.reduce((sum, m) => sum + (other.muscles[m] ?? 0), 0) / Math.max(primary.length, 1);
@@ -221,7 +232,7 @@ export function substitutes(
         other.id !== exercise.id &&
         !other.archived &&
         !avoid.has(other.id) &&
-        (!available || available.has(other.equipment)) &&
+        (!gym || canDoAt(other, gym)) &&
         overlap(other) >= 0.5
     )
     .map((other) => ({
@@ -236,6 +247,29 @@ export function substitutes(
     .sort((a, b) => b.score - a.score)
     .slice(0, options.limit ?? 12)
     .map((s) => s.other);
+}
+
+/**
+ * What a day's exercises become at another gym: each stays when the gym can do it, otherwise
+ * the closest substitute it can that the day doesn't already have. One with no substitute stays
+ * as planned, to swap or skip by hand.
+ */
+export function standIns(
+  planned: Exercise[],
+  exercises: Exercise[],
+  gym: GymAccess,
+  settings: ExerciseSetting[] = []
+): Exercise[] {
+  const taken = new Set(planned.filter((e) => canDoAt(e, gym)).map((e) => e.id));
+  return planned.map((exercise) => {
+    if (canDoAt(exercise, gym)) return exercise;
+    const found = substitutes(exercise, exercises, { gym, settings, limit: 40 }).find(
+      (other) => !taken.has(other.id)
+    );
+    if (!found) return exercise;
+    taken.add(found.id);
+    return found;
+  });
 }
 
 /** What lifters mean by the bare name of a lift, keyed by its normalized words. */

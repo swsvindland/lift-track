@@ -13,9 +13,10 @@ import {
   type Gym,
   type MesoDay,
   type MesoSlot,
+  type ExerciseSetting,
   type Mesocycle,
 } from "@/db";
-import type { Exercise } from "./exercises";
+import { standIns, type Exercise } from "./exercises";
 import type { Muscle } from "./exercises/types";
 import type { ProgramDraft } from "./program-builder";
 import { DELOAD_RIR, METHOD, prescribe, type PastSet } from "./progression";
@@ -99,6 +100,7 @@ export function startProgram(draft: ProgramDraft, options: { deload?: boolean } 
         rir: draft.rir,
         deload: options.deload ?? true,
         deprioritized: draft.deprioritized ?? [],
+        gymId: draft.gymId ?? null,
         method: METHOD,
         status: "active",
         startedAt: now(),
@@ -135,6 +137,7 @@ export function draftFrom(detail: ProgramDetail): ProgramDraft {
     name: detail.name,
     rir: detail.rir,
     deprioritized: detail.deprioritized,
+    gymId: detail.gymId,
     days: detail.days.map((d) => ({
       name: d.name,
       slots: d.slots.map((s) => ({
@@ -153,7 +156,11 @@ export function draftFrom(detail: ProgramDetail): ProgramDraft {
 export function updateProgram(id: number, draft: ProgramDraft) {
   db.transaction((tx) => {
     tx.update(mesocycles)
-      .set({ name: draft.name, rir: draft.rir })
+      .set({
+        name: draft.name,
+        rir: draft.rir,
+        ...(draft.gymId !== undefined && { gymId: draft.gymId }),
+      })
       .where(eq(mesocycles.id, id))
       .run();
     const existing = programDetail(id);
@@ -378,8 +385,16 @@ function previousSession(mesoId: number, dayId: number, week: number) {
   return { previous: workoutDetail(found.id), feedback };
 }
 
-/** Completed working sets from the last non-deload session that did an exercise. */
-export function lastComparable(exerciseId: string, excludeWorkout?: number): PastSet[] {
+/**
+ * Completed working sets from the last non-deload session that did an exercise. Sessions from
+ * the same side of a trip come first: away, the hotel's dumbbells set the pace; back home, the
+ * loads from before you left do, so a lighter week away doesn't pull them down.
+ */
+export function lastComparable(
+  exerciseId: string,
+  excludeWorkout?: number,
+  travel = false
+): PastSet[] {
   const rows = db
     .select({ block: workoutExercises, workout: workouts })
     .from(workoutExercises)
@@ -392,8 +407,9 @@ export function lastComparable(exerciseId: string, excludeWorkout?: number): Pas
       )
     )
     .orderBy(desc(workouts.startedAt))
-    .limit(5)
-    .all();
+    .limit(20)
+    .all()
+    .sort((a, b) => Number(a.workout.travel !== travel) - Number(b.workout.travel !== travel));
   for (const { block, workout } of rows) {
     if (workout.id === excludeWorkout) continue;
     const done = db
@@ -408,15 +424,27 @@ export function lastComparable(exerciseId: string, excludeWorkout?: number): Pas
   return [];
 }
 
+export type SessionContext = {
+  gym?: Gym;
+  bodyWeightKg?: number | null;
+  byId: (id: string) => Exercise;
+  /** Away from your usual gym; the workout is marked so its loads stay with the trip. */
+  travel?: boolean;
+  /** With these, exercises the gym can't do become the closest ones it can, for this session. */
+  exercises?: Exercise[];
+  settings?: ExerciseSetting[];
+};
+
 /**
  * Starts a program session with every set prescribed. Returns the open workout instead when one
- * is already running with exercises in it; an empty one is discarded first.
+ * is already running with exercises in it; an empty one is discarded first. A slot whose exercise
+ * the gym can't do gets a stand-in that keeps the slot, so its sets still count and progress.
  */
 export function startSession(
   detail: ProgramDetail,
   week: number,
   dayId: number,
-  context: { gym?: Gym; bodyWeightKg?: number | null; byId: (id: string) => Exercise }
+  context: SessionContext
 ): number {
   const open = activeWorkout();
   if (open) {
@@ -429,6 +457,11 @@ export function startSession(
   const rir = weekRir(detail, week);
   const { previous, feedback } = previousSession(detail.id, dayId, week);
   const plan = planDay(detail, day, week, previous, feedback, context.byId);
+  const planned = plan.map(({ slot }) => context.byId(slot.exerciseId));
+  const chosen =
+    context.gym && context.exercises
+      ? standIns(planned, context.exercises, context.gym, context.settings)
+      : planned;
   return db.transaction((tx) => {
     const workoutId = tx
       .insert(workouts)
@@ -441,19 +474,25 @@ export function startSession(
         mesoWeek: week,
         mesoDayId: day.id,
         deload,
+        travel: context.travel ?? false,
         updatedAt: Date.now(),
       })
       .returning()
       .get().id;
     plan.forEach(({ slot, sets: count }, position) => {
-      const exercise = context.byId(slot.exerciseId);
+      const exercise = chosen[position];
+      // A stand-in trains in its own rep range, as a swap does.
+      const reps: [number, number] =
+        exercise.id === slot.exerciseId
+          ? [slot.repMin, slot.repMax]
+          : [exercise.reps[0], exercise.reps[1]];
       const result = prescribe({
         exercise,
         gym: context.gym,
-        reps: [slot.repMin, slot.repMax],
+        reps,
         rir,
         sets: count,
-        last: lastComparable(slot.exerciseId),
+        last: lastComparable(exercise.id, undefined, context.travel),
         bodyWeightKg: context.bodyWeightKg,
         deload,
       });
@@ -461,10 +500,10 @@ export function startSession(
         .insert(workoutExercises)
         .values({
           workoutId,
-          exerciseId: slot.exerciseId,
+          exerciseId: exercise.id,
           position,
-          repMin: slot.repMin,
-          repMax: slot.repMax,
+          repMin: reps[0],
+          repMax: reps[1],
           slotId: slot.id,
           advice: result.advice,
         })
@@ -565,7 +604,7 @@ export function swapInSession(
       reps: exercise.reps,
       rir: weekRir(meso, workout.mesoWeek ?? 0),
       sets: open.length,
-      last: lastComparable(exercise.id, workout.id),
+      last: lastComparable(exercise.id, workout.id, workout.travel),
       bodyWeightKg: context.bodyWeightKg ?? workout.bodyWeightKg,
       deload: workout.deload,
     });

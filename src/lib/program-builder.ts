@@ -1,5 +1,5 @@
 import type { ExerciseSetting } from "@/db/schema";
-import type { Exercise } from "./exercises";
+import { canDoAt, type Exercise } from "./exercises";
 import type { Equipment, Muscle, Pattern } from "./exercises/types";
 import { rirPlan } from "./progression";
 
@@ -19,6 +19,9 @@ export type BuilderInput = {
   /** Muscles to bring down: one movement a day at most, fewer sets, a low cap that never grows. */
   deprioritized: Muscle[];
   equipment: readonly Equipment[];
+  /** The gym's exercise exceptions: ones it can't do despite the equipment, and extras it can. */
+  excluded?: readonly string[];
+  included?: readonly string[];
   settings: ExerciseSetting[];
 };
 
@@ -29,6 +32,8 @@ export type ProgramDraft = {
   rir: number[];
   days: DraftDay[];
   deprioritized?: Muscle[];
+  /** The gym it's built for; none means your main gym. */
+  gymId?: number | null;
 };
 
 type Spec = { pattern: Pattern; muscle: Muscle };
@@ -236,6 +241,7 @@ const slotsFor: Record<SessionMinutes, number> = { 30: 4, 45: 5, 60: 6, 75: 7, 9
  * Picks an exercise for a movement: the preferred list first, then anything in the library with
  * that pattern and muscle. The n-th use of a movement in the week takes the n-th choice, so
  * repeated days vary a little. Equipment the gym lacks and exercises marked Avoid are skipped.
+ * `loose` accepts any movement for the muscle, for gyms that lack the usual ones.
  */
 function pick(
   spec: Spec,
@@ -243,10 +249,12 @@ function pick(
   usable: (e: Exercise) => boolean,
   used: Map<string, number>,
   taken: Set<string>,
-  favorite: Set<string>
+  favorite: Set<string>,
+  loose = false
 ): Exercise | undefined {
   const byId = new Map(exercises.map((e) => [e.id, e]));
-  const fits = (e: Exercise) => e.pattern === spec.pattern && e.muscles[spec.muscle] === 1;
+  const fits = (e: Exercise) =>
+    (loose || e.pattern === spec.pattern) && e.muscles[spec.muscle] === 1;
   const ranked = [
     ...exercises.filter((e) => favorite.has(e.id) && fits(e)),
     ...(preferred[spec.pattern] ?? []).flatMap((id) => byId.get(id) ?? []),
@@ -257,7 +265,7 @@ function pick(
   );
   const options = ranked.filter((e) => !taken.has(e.id));
   if (!options.length) return undefined;
-  const key = `${spec.pattern}:${spec.muscle}`;
+  const key = `${loose ? "any" : spec.pattern}:${spec.muscle}`;
   const n = used.get(key) ?? 0;
   used.set(key, n + 1);
   return options[n % Math.min(options.length, 2)];
@@ -267,8 +275,8 @@ export function buildProgram(input: BuilderInput, exercises: Exercise[]): Progra
   const split = splits[Math.min(6, Math.max(2, input.days))];
   const avoid = new Set(input.settings.filter((x) => x.avoid).map((x) => x.exerciseId));
   const favorite = new Set(input.settings.filter((x) => x.favorite).map((x) => x.exerciseId));
-  const equipment = new Set(input.equipment);
-  const usable = (e: Exercise) => !e.archived && !avoid.has(e.id) && equipment.has(e.equipment);
+  const gym = { equipment: input.equipment, excluded: input.excluded, included: input.included };
+  const usable = (e: Exercise) => !e.archived && !avoid.has(e.id) && canDoAt(e, gym);
   const used = new Map<string, number>();
   const count = slotsFor[input.minutes] + (input.experience === "advanced" ? 1 : 0);
   const baseSets = input.experience === "beginner" ? 2 : 3;
@@ -293,9 +301,12 @@ export function buildProgram(input: BuilderInput, exercises: Exercise[]): Progra
     // The rest stand in when the gym can't do a chosen movement.
     const backups = specs.filter((spec) => !chosen.includes(spec));
     const slots: DraftSlot[] = [];
-    for (const spec of [...chosen, ...backups]) {
+    // A small gym may lack every listed movement for a muscle; then any movement for it will do.
+    const passes = [...chosen, ...backups].map((spec) => ({ spec, loose: false }));
+    passes.push(...passes.map(({ spec }) => ({ spec, loose: true })));
+    for (const { spec, loose } of passes) {
       if (slots.length >= count) break;
-      const exercise = pick(spec, exercises, usable, used, taken, favorite);
+      const exercise = pick(spec, exercises, usable, used, taken, favorite, loose);
       if (!exercise) continue;
       taken.add(exercise.id);
       // Compounds early in the day carry a set more than isolation work at the end.

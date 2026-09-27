@@ -5,7 +5,7 @@ import { SystemButton, SystemIconButton, SystemText as Text } from "@/components
 import { ActionMenu, Editor, Field, Screen } from "@/components/ui";
 import { ExercisePicker } from "@/components/exercises/exercise-picker";
 import { write, useQuery } from "@/lib/data";
-import type { Exercise } from "@/lib/exercises";
+import { canDoAt, type Exercise } from "@/lib/exercises";
 import { useExercises } from "@/lib/exercise-store";
 import { adviceText, duration, rirText } from "@/lib/format";
 import { isDeloadWeek, programDetail, swapInSession, weekRir } from "@/lib/programs";
@@ -63,6 +63,8 @@ export function WorkoutScreen({ workoutId }: { workoutId?: number }) {
       ? {
           deload: isDeloadWeek(meso, detail.mesoWeek ?? 0),
           rir: weekRir(meso, detail.mesoWeek ?? 0),
+          // What each slot plans, to name the exercise a stand-in replaces.
+          planned: new Map(meso.days.flatMap((d) => d.slots).map((s) => [s.id, s.exerciseId])),
         }
       : undefined;
   }, [detail?.mesoId, detail?.mesoWeek]);
@@ -165,6 +167,7 @@ export function WorkoutScreen({ workoutId }: { workoutId?: number }) {
             program
               ? `${program.deload ? "Deload" : `Week ${(detail.mesoWeek ?? 0) + 1}`} · ${rirText(program.rir)}`
               : "",
+            detail.travel && gym ? `At ${gym.name}` : "",
             editingPast ? "Editing" : duration(detail.startedAt),
           ]
             .filter(Boolean)
@@ -243,6 +246,9 @@ export function WorkoutScreen({ workoutId }: { workoutId?: number }) {
         {detail.exercises.map((block, index) => {
           const exercise = byId(block.exerciseId);
           const inGroup = block.supersetGroup !== null;
+          // Past sessions may predate a permanent swap, so only the open one names its plan.
+          const planned =
+            !editingPast && block.slotId !== null ? program?.planned.get(block.slotId) : undefined;
           return (
             <ExerciseCard
               key={block.id}
@@ -257,6 +263,8 @@ export function WorkoutScreen({ workoutId }: { workoutId?: number }) {
               restAfter={!inGroup || groups[index + 1] !== block.supersetGroup}
               onSwap={() => setPicker({ replacing: block.id })}
               advice={adviceText(block.advice, units)}
+              standsInFor={planned && planned !== block.exerciseId ? byId(planned).name : undefined}
+              missingAt={!editingPast && gym && !canDoAt(exercise, gym) ? gym.name : undefined}
               nextName={
                 detail.exercises[index + 1]
                   ? byId(detail.exercises[index + 1].exerciseId).name
@@ -300,7 +308,7 @@ export function WorkoutScreen({ workoutId }: { workoutId?: number }) {
             ? byId(detail.exercises.find((b) => b.id === picker.replacing)?.exerciseId ?? "")
             : undefined
         }
-        equipment={gym?.equipment}
+        gym={gym}
       />
       <DescribeSheet open={describing} close={() => setDescribing(false)} workoutId={detail.id} />
       <Editor

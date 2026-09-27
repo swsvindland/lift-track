@@ -36,6 +36,8 @@ export function ExerciseCard({
   onSwap,
   onUndo,
   advice,
+  standsInFor,
+  missingAt,
   nextName,
 }: {
   block: ExerciseBlock;
@@ -53,6 +55,10 @@ export function ExerciseCard({
   onUndo: (message: string, undo: () => void) => void;
   /** Why the targets are what they are, for program sessions. */
   advice?: string;
+  /** The program's exercise this one replaces today, e.g. because the gym can't do it. */
+  standsInFor?: string;
+  /** The gym's name when it can't do this exercise and nothing stood in for it. */
+  missingAt?: string;
   /** The exercise after this one, named in the rest timer once this one is done. */
   nextName?: string;
 }) {
@@ -113,6 +119,10 @@ export function ExerciseCard({
               .join(", ")}{" "}
             · {block.repMin}–{block.repMax} reps
           </Text>
+          {!!missingAt && (
+            <Text className="text-sm text-warning">Not at {missingAt}. Swap or remove it.</Text>
+          )}
+          {!!standsInFor && <Text className="text-sm text-muted">In place of {standsInFor}</Text>}
           {!!advice && <Text className="text-sm text-accent-soft-foreground">{advice}</Text>}
         </Pressable>
         <ActionMenu
