@@ -92,6 +92,7 @@ export function startProgram(draft: ProgramDraft, options: { deload?: boolean } 
         name: draft.name,
         rir: draft.rir,
         deload: options.deload ?? true,
+        deprioritized: draft.deprioritized ?? [],
         method: METHOD,
         status: "active",
         startedAt: now(),
@@ -127,6 +128,7 @@ export function draftFrom(detail: ProgramDetail): ProgramDraft {
   return {
     name: detail.name,
     rir: detail.rir,
+    deprioritized: detail.deprioritized,
     days: detail.days.map((d) => ({
       name: d.name,
       slots: d.slots.map((s) => ({
@@ -299,10 +301,11 @@ export type SlotPlan = { slot: MesoSlot; sets: number; delta: number };
 /**
  * Sets for each slot of a day in a week. Week one uses the plan. Later weeks start from last
  * week's same session and move each muscle by its delta, added to the slot with the fewest sets
- * that trains it and taken from the one with the most. The deload halves last week's sets.
+ * that trains it and taken from the one with the most. A muscle brought down never gains sets.
+ * The deload halves last week's sets.
  */
 export function planDay(
-  meso: Pick<Mesocycle, "rir" | "deload">,
+  meso: Pick<Mesocycle, "rir" | "deload" | "deprioritized">,
   day: MesoDay & { slots: MesoSlot[] },
   week: number,
   previous: WorkoutDetail | undefined,
@@ -320,6 +323,7 @@ export function planDay(
   const muscles = [...new Set(day.slots.flatMap((s) => primary(byId(s.exerciseId))))];
   for (const muscle of muscles) {
     let delta = muscleDelta(previous, muscle, byId, feedback[muscle]);
+    if (meso.deprioritized.includes(muscle)) delta = Math.min(0, delta);
     const training = plans.filter((p) => byId(p.slot.exerciseId).muscles[muscle] === 1);
     const total = () => training.reduce((sum, p) => sum + p.sets, 0);
     while (delta > 0 && total() < MAX_MUSCLE_SESSION_SETS) {

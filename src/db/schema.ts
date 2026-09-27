@@ -78,6 +78,8 @@ export const mesocycles = sqliteTable("mesocycles", {
   /** Reps in reserve per accumulation week; the deload week follows them. */
   rir: text("rir", { mode: "json" }).$type<number[]>().notNull(),
   deload: integer("deload", { mode: "boolean" }).notNull().default(true),
+  /** Muscles brought down: they start at low volume and never gain sets week to week. */
+  deprioritized: text("deprioritized", { mode: "json" }).$type<Muscle[]>().notNull().default([]),
   /** Progression method version, so later changes don't reinterpret old blocks. */
   method: integer("method").notNull(),
   status: text("status", { enum: ["active", "finished"] }).notNull(),

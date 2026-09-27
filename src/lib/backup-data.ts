@@ -98,6 +98,7 @@ const dataSchema = z.strictObject({
       name: text.min(1).max(120),
       rir: z.array(z.number().int().min(0).max(10)).min(1).max(12),
       deload: z.boolean(),
+      deprioritized: z.array(z.enum(muscles)).max(muscles.length).optional(),
       method: z.number().int().min(1).max(100),
       status: z.enum(["active", "finished"]),
       startedAt: iso,

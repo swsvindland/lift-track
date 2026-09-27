@@ -220,6 +220,7 @@ test("the builder fits the gym, the session length and priorities", () => {
     experience: "intermediate",
     weeks: 5,
     priorities: [],
+    deprioritized: [],
     equipment: types.equipment,
     settings: [],
   };
@@ -278,6 +279,69 @@ test("the builder fits the gym, the session length and priorities", () => {
   );
 });
 
+test("bringing lats up and quads down shifts sets, and quads never grow", () => {
+  const { programs, builder, exercises, workouts, loads, db, schema } = lift();
+  const all = exercises.allExercises([]);
+  const byId = (id) => all.find((e) => e.id === id);
+  const types = require("./harness.cjs").load("src/lib/exercises/types.ts");
+  const base = {
+    days: 4,
+    minutes: 60,
+    experience: "intermediate",
+    weeks: 5,
+    priorities: [],
+    deprioritized: [],
+    equipment: types.equipment,
+    settings: [],
+  };
+  const weekly = (draft, m) =>
+    draft.days
+      .flatMap((d) => d.slots)
+      .filter((s) => byId(s.exerciseId).muscles[m] === 1)
+      .reduce((n, s) => n + s.sets, 0);
+  const plain = builder.buildProgram(base, all);
+  const shifted = builder.buildProgram(
+    // A muscle in both lists counts as brought up.
+    { ...base, priorities: ["lats", "chest"], deprioritized: ["quads", "chest"] },
+    all
+  );
+  assert.deepEqual(shifted.deprioritized, ["quads"]);
+  assert.ok(weekly(shifted, "lats") > weekly(plain, "lats"));
+  assert.ok(weekly(shifted, "quads") < weekly(plain, "quads"));
+  assert.ok(weekly(shifted, "quads") >= 1 && weekly(shifted, "quads") <= builder.loweredVolume);
+  for (const day of shifted.days) {
+    // Sessions stay full: the room goes to other movements, and quads keep one at most.
+    assert.equal(day.slots.length, 6, day.name);
+    assert.ok(day.slots.filter((s) => byId(s.exerciseId).muscles.quads === 1).length <= 1);
+  }
+
+  // Week 2: every target met and quads felt easy, yet quads hold while others grow.
+  const mesoId = programs.startProgram(shifted);
+  const detail = programs.programDetail(mesoId);
+  assert.deepEqual(detail.deprioritized, ["quads"]);
+  assert.deepEqual(programs.draftFrom(detail).deprioritized, ["quads"]);
+  const gym = db.insert(schema.gyms).values(loads.defaultGym("kg")).returning().get();
+  const context = { gym, bodyWeightKg: 80, byId };
+  const lower = detail.days[1];
+  const w1 = programs.startSession(detail, 0, lower.id, context);
+  for (const block of workouts.workoutDetail(w1).exercises)
+    for (const set of block.sets) {
+      workouts.updateSet(set.id, { weightKg: 60 });
+      workouts.completeSet(set.id);
+    }
+  workouts.finishWorkout(w1);
+  programs.saveFeedback(w1, "quads", "easy");
+  const w2 = workouts.workoutDetail(programs.startSession(detail, 1, lower.id, context));
+  const setsOf = (session, m) =>
+    session.exercises
+      .filter((b) => byId(b.exerciseId).muscles[m] === 1)
+      .reduce((n, b) => n + b.sets.length, 0);
+  const planned = (m) =>
+    lower.slots.filter((s) => byId(s.exerciseId).muscles[m] === 1).reduce((n, s) => n + s.sets, 0);
+  assert.equal(setsOf(w2, "quads"), planned("quads"));
+  assert.equal(setsOf(w2, "hamstrings"), planned("hamstrings") + 1);
+});
+
 test("a program runs week by week: prescriptions, feedback-driven sets, skips and the deload", () => {
   const { programs, builder, exercises, workouts, loads, db, schema } = lift();
   const all = exercises.allExercises([]);
@@ -290,6 +354,7 @@ test("a program runs week by week: prescriptions, feedback-driven sets, skips an
       experience: "intermediate",
       weeks: 4,
       priorities: [],
+      deprioritized: [],
       equipment: types.equipment,
       settings: [],
     },

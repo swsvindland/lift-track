@@ -1,0 +1,1 @@
+ALTER TABLE `mesocycles` ADD `deprioritized` text DEFAULT '[]' NOT NULL;

@@ -1,7 +1,8 @@
-import { useState } from "react";
-import { View } from "react-native";
+import { useRef, useState } from "react";
+import { Pressable, ScrollView, View } from "react-native";
 import { router } from "expo-router";
-import { Chip, SystemButton, SystemLabel, SystemText as Text } from "@/components/system";
+import { twMerge } from "tailwind-merge";
+import { SystemButton, SystemIcon, SystemLabel, SystemText as Text } from "@/components/system";
 import { Choices, Editor, Field } from "@/components/ui";
 import { equipmentLabels, matchExercise, muscleLabels, primaryMuscles } from "@/lib/exercises";
 import { muscles, type Equipment, type Muscle } from "@/lib/exercises/types";
@@ -24,9 +25,12 @@ const experienceLabels: Record<Experience, string> = {
   advanced: "3+ years",
 };
 
+const MAX_PRIORITIES = 3;
+const steps = ["Build a program", "Bring up", "Bring down"] as const;
+
 type Props = { open: boolean; close: () => void };
 
-/** A few questions, then the editor opens on a program built from them. */
+/** A few questions, muscles to bring up, muscles to bring down, then the editor opens. */
 export function ProgramBuilderSheet(props: Props) {
   return props.open ? <OpenBuilder {...props} /> : null;
 }
@@ -39,6 +43,9 @@ function OpenBuilder({ open, close }: Props) {
   const [weeks, setWeeks] = useState<(typeof weekOptions)[number]>("5");
   const [experience, setExperience] = useState<Experience>("intermediate");
   const [priorities, setPriorities] = useState<Muscle[]>([]);
+  const [deprioritized, setDeprioritized] = useState<Muscle[]>([]);
+  const [step, setStep] = useState(0);
+  const scrollRef = useRef<ScrollView>(null);
   const [wish, setWish] = useState("");
   const [reading, setReading] = useState(false);
   const [kit, setKit] = useState<Equipment[] | null>(null);
@@ -55,6 +62,7 @@ function OpenBuilder({ open, close }: Props) {
       if (hints.weeks) setWeeks(String(hints.weeks) as (typeof weekOptions)[number]);
       if (hints.experience) setExperience(hints.experience);
       if (hints.priorities.length) setPriorities(hints.priorities);
+      if (hints.deprioritized.length) setDeprioritized(hints.deprioritized);
       setKit(hints.equipment ?? null);
       setAvoid(
         hints.avoid.flatMap((phrase) => {
@@ -88,6 +96,7 @@ function OpenBuilder({ open, close }: Props) {
         weeks: Number(weeks),
         experience,
         priorities,
+        deprioritized: deprioritized.filter((m) => !priorities.includes(m)),
         equipment: kit
           ? activeGym(units).equipment.filter((e) => kit.includes(e))
           : activeGym(units).equipment,
@@ -111,88 +120,165 @@ function OpenBuilder({ open, close }: Props) {
     router.push("/program");
   };
 
+  const go = (next: number) => {
+    setStep(next);
+    scrollRef.current?.scrollTo({ y: 0, animated: false });
+  };
+  const toggle = (list: Muscle[], set: (next: Muscle[]) => void, m: Muscle) =>
+    set(list.includes(m) ? list.filter((x) => x !== m) : [...list, m]);
+  const picked = step === 1 ? priorities : deprioritized;
+
   return (
     <Editor
-      title="Build a program"
+      title={steps[step]}
       open={open}
       close={close}
-      footer={<SystemButton onPress={build}>Build</SystemButton>}
+      scrollRef={scrollRef}
+      footer={
+        <View className="flex-row gap-3">
+          {step > 0 && (
+            <SystemButton variant="outline" onPress={() => go(step - 1)}>
+              Back
+            </SystemButton>
+          )}
+          <SystemButton
+            className="flex-1"
+            onPress={step < steps.length - 1 ? () => go(step + 1) : build}
+          >
+            {step === steps.length - 1 ? "Build" : step > 0 && !picked.length ? "Skip" : "Next"}
+          </SystemButton>
+        </View>
+      }
     >
-      <View className="gap-2">
-        <Field
-          label="Describe what you want (optional)"
-          value={wish}
-          onChange={setWish}
-          placeholder="4 days, an hour, only dumbbells, bad left shoulder, bigger arms"
-          multiline
-        />
-        <SystemButton
-          variant="secondary"
-          icon={
-            model.available ? <AiMark size={18} color="accent-soft-foreground" /> : "text-outline"
-          }
-          isDisabled={reading || !wish.trim()}
-          onPress={() => void fillFromWords()}
-        >
-          {reading ? "Reading…" : "Fill in from this"}
-        </SystemButton>
-        {(kit || avoid.length > 0) && (
-          <Text className="text-sm text-muted">
-            {kit ? `Using only: ${kit.map((e) => equipmentLabels[e]).join(", ")}. ` : ""}
-            {avoid.length ? `Leaving out: ${avoid.map((a) => a.label).join(", ")}.` : ""}
-          </Text>
-        )}
-        {!model.available && (
-          <Text className="text-xs text-muted">
-            Without an on-device model, only days, minutes and weeks are read.
-          </Text>
-        )}
-      </View>
-      <View className="gap-2">
-        <SystemLabel>Days a week</SystemLabel>
-        <Choices values={dayOptions} value={days} onChange={setDays} label={(d) => d} />
-        <Text className="text-sm text-muted">{splits[Number(days)].name}</Text>
-      </View>
-      <View className="gap-2">
-        <SystemLabel>Minutes a session</SystemLabel>
-        <Choices values={minuteOptions} value={minutes} onChange={setMinutes} label={(m) => m} />
-      </View>
-      <View className="gap-2">
-        <SystemLabel>Lifting for</SystemLabel>
-        <Choices
-          values={experienceOptions}
-          value={experience}
-          onChange={setExperience}
-          label={(e) => experienceLabels[e]}
-        />
-      </View>
-      <View className="gap-2">
-        <SystemLabel>Weeks before the deload</SystemLabel>
-        <Choices values={weekOptions} value={weeks} onChange={setWeeks} label={(w) => w} />
-      </View>
-      <View className="gap-2">
-        <SystemLabel>Bring up (up to 3)</SystemLabel>
-        <View className="flex-row flex-wrap gap-2">
-          {muscles.map((m) => (
-            <Chip
-              key={m}
-              label={muscleLabels[m]}
-              selected={priorities.includes(m)}
-              onPress={() =>
-                setPriorities(
-                  priorities.includes(m)
-                    ? priorities.filter((p) => p !== m)
-                    : [...priorities, m].slice(-3)
+      {step === 0 && (
+        <>
+          <View className="gap-2">
+            <Field
+              label="Describe what you want (optional)"
+              value={wish}
+              onChange={setWish}
+              placeholder="4 days, an hour, only dumbbells, bad left shoulder, bigger arms, smaller quads"
+              multiline
+            />
+            <SystemButton
+              variant="secondary"
+              icon={
+                model.available ? (
+                  <AiMark size={18} color="accent-soft-foreground" />
+                ) : (
+                  "text-outline"
                 )
               }
+              isDisabled={reading || !wish.trim()}
+              onPress={() => void fillFromWords()}
+            >
+              {reading ? "Reading…" : "Fill in from this"}
+            </SystemButton>
+            {(kit || avoid.length > 0) && (
+              <Text className="text-sm text-muted">
+                {kit ? `Using only: ${kit.map((e) => equipmentLabels[e]).join(", ")}. ` : ""}
+                {avoid.length ? `Leaving out: ${avoid.map((a) => a.label).join(", ")}.` : ""}
+              </Text>
+            )}
+            {!model.available && (
+              <Text className="text-xs text-muted">
+                Without an on-device model, only days, minutes and weeks are read.
+              </Text>
+            )}
+          </View>
+          <View className="gap-2">
+            <SystemLabel>Days a week</SystemLabel>
+            <Choices values={dayOptions} value={days} onChange={setDays} label={(d) => d} />
+            <Text className="text-sm text-muted">{splits[Number(days)].name}</Text>
+          </View>
+          <View className="gap-2">
+            <SystemLabel>Minutes a session</SystemLabel>
+            <Choices
+              values={minuteOptions}
+              value={minutes}
+              onChange={setMinutes}
+              label={(m) => m}
             />
-          ))}
-        </View>
-      </View>
-      <Text className="text-sm text-muted">
-        Exercises come from your gym&apos;s equipment and skip ones marked Avoid. You can change
-        anything next.
-      </Text>
+          </View>
+          <View className="gap-2">
+            <SystemLabel>Lifting for</SystemLabel>
+            <Choices
+              values={experienceOptions}
+              value={experience}
+              onChange={setExperience}
+              label={(e) => experienceLabels[e]}
+            />
+          </View>
+          <View className="gap-2">
+            <SystemLabel>Weeks before the deload</SystemLabel>
+            <Choices values={weekOptions} value={weeks} onChange={setWeeks} label={(w) => w} />
+          </View>
+        </>
+      )}
+      {step === 1 && (
+        <MuscleList
+          note={`Up to ${MAX_PRIORITIES}. They get more sets and are never cut for time.`}
+          options={muscles}
+          selected={priorities}
+          full={priorities.length >= MAX_PRIORITIES}
+          onToggle={(m) => toggle(priorities, setPriorities, m)}
+        />
+      )}
+      {step === 2 && (
+        <>
+          <MuscleList
+            note="Trained less, and their sets don't grow week to week."
+            options={muscles.filter((m) => !priorities.includes(m))}
+            selected={deprioritized}
+            onToggle={(m) => toggle(deprioritized, setDeprioritized, m)}
+          />
+          <Text className="text-sm text-muted">
+            Exercises come from your gym&apos;s equipment and skip ones marked Avoid. You can change
+            anything next.
+          </Text>
+        </>
+      )}
     </Editor>
+  );
+}
+
+/** Every muscle as a row; tap to pick. Once `full`, unpicked rows wait until one is dropped. */
+function MuscleList({
+  note,
+  options,
+  selected,
+  full = false,
+  onToggle,
+}: {
+  note: string;
+  options: readonly Muscle[];
+  selected: Muscle[];
+  full?: boolean;
+  onToggle: (m: Muscle) => void;
+}) {
+  return (
+    <View>
+      <Text className="pb-2 text-sm text-muted">{note}</Text>
+      {options.map((m) => {
+        const on = selected.includes(m);
+        const disabled = full && !on;
+        return (
+          <Pressable
+            key={m}
+            accessibilityRole="checkbox"
+            accessibilityState={{ checked: on, disabled }}
+            disabled={disabled}
+            onPress={() => onToggle(m)}
+            className={twMerge(
+              "min-h-12 flex-row items-center gap-3 border-b border-separator py-3 active:opacity-60",
+              disabled && "opacity-40"
+            )}
+          >
+            <Text className="flex-1 font-medium">{muscleLabels[m]}</Text>
+            {on && <SystemIcon name="checkmark" size={20} color="accent-soft-foreground" />}
+          </Pressable>
+        );
+      })}
+    </View>
   );
 }

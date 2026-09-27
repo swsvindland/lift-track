@@ -177,6 +177,7 @@ test("messy pages go to the model; hints read numbers directly and the rest from
       minutes: 0,
       experience: "unknown",
       priorities: ["biceps", "triceps", "not-a-muscle"],
+      deprioritized: ["quads", "biceps"],
       equipment: ["dumbbell"],
       avoid: ["overhead press"],
     })
@@ -185,6 +186,7 @@ test("messy pages go to the model; hints read numbers directly and the rest from
   assert.equal(hints.minutes, 60);
   assert.equal(hints.experience, undefined);
   assert.deepEqual(hints.priorities, ["biceps", "triceps"]);
+  assert.deepEqual(hints.deprioritized, ["quads"]);
   assert.deepEqual(hints.equipment, ["dumbbell", "bodyweight"]);
   assert.deepEqual(hints.avoid, ["overhead press"]);
 
