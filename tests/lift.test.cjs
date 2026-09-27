@@ -145,19 +145,27 @@ test("a workout logs in one tap per set, prefills from last time and survives fi
   assert.equal(detail.exercises[0].sets.length, 2);
   assert.equal(workouts.activeWorkout(), undefined);
 
-  // Repeating it prefills targets from last time, so each set is one tap.
+  // Repeating it prefills targets a step on from last time (one more rep), so each set is
+  // one tap and the lifter still progresses.
   const next = workouts.startWorkout({ from: id });
   const repeat = workouts.workoutDetail(next);
   assert.equal(repeat.name, "Upper");
   assert.deepEqual(
     repeat.exercises[0].sets.map((s) => [s.targetWeightKg, s.targetReps, s.weightKg]),
     [
-      [100, 8, null],
-      [100, 8, null],
+      [100, 9, null],
+      [100, 9, null],
     ]
   );
+  assert.deepEqual(repeat.exercises[0].advice, {
+    kind: "reps",
+    kg: 100,
+    fromReps: 8,
+    toReps: 9,
+    rir: 2,
+  });
   workouts.completeSet(repeat.exercises[0].sets[0].id);
-  workouts.updateSet(repeat.exercises[0].sets[1].id, { weightKg: 105, reps: 7 });
+  workouts.updateSet(repeat.exercises[0].sets[1].id, { weightKg: 105, reps: 8 });
   workouts.completeSet(repeat.exercises[0].sets[1].id);
   workouts.finishWorkout(next);
   const records = workouts.workoutRecords(workouts.workoutDetail(next));
@@ -170,7 +178,7 @@ test("a workout logs in one tap per set, prefills from last time and survives fi
   );
   assert.equal(workouts.finishedWorkouts().length, 2);
   assert.equal(workouts.exerciseHistory("barbell-bench-press").length, 2);
-  close(workouts.bestE1rm("barbell-bench-press"), 105 * (1 + 7 / 30));
+  close(workouts.bestE1rm("barbell-bench-press"), 105 * (1 + 8 / 30));
 
   // An empty workout is discarded on finish, not saved.
   const empty = workouts.startWorkout();

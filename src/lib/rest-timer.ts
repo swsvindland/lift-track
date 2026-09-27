@@ -8,7 +8,8 @@ import { db, preferences } from "@/db";
    killed. While it runs, the lock screen shows it (a Live Activity on iPhone, an ongoing
    notification on Android) and a local notification fires at the deadline. */
 
-export type Rest = { endsAt: number; total: number; label: string };
+/** `setId` is the set the rest follows, so it can be rated from the rest bar. */
+export type Rest = { endsAt: number; total: number; label: string; setId?: number };
 
 const KEY = "restTimer";
 let current: Rest | null = read();
@@ -183,8 +184,8 @@ function show(rest: Rest) {
   void showActivity(rest).catch(() => {});
 }
 
-export function startRest(seconds: number, label: string) {
-  const rest = { endsAt: Date.now() + seconds * 1000, total: seconds, label };
+export function startRest(seconds: number, label: string, setId?: number) {
+  const rest = { endsAt: Date.now() + seconds * 1000, total: seconds, label, setId };
   write(rest);
   show(rest);
 }

@@ -1,13 +1,15 @@
+import type { Effort } from "@/db/schema";
 import type { Equipment } from "./exercises/types";
 import { achievableLoads, fromGymUnit, type GymSetup } from "./loads";
 import { e1rm, repsToFailure } from "./strength";
 
 /**
- * Progression method 1. Deterministic and explainable: the next session's load and reps come
- * from the last comparable performance, this week's reps-in-reserve target and the loads the gym
- * can actually make. See docs/progression.md.
+ * Progression method 2. Deterministic and explainable: the next session's load and reps come
+ * from the last comparable performance and how hard it felt, this week's reps-in-reserve target
+ * and the loads the gym can actually make. A session done as prescribed always earns a step.
+ * See docs/progression.md.
  */
-export const METHOD = 1;
+export const METHOD = 2;
 
 /** Reps in reserve for each accumulation week; effort rises toward the deload. */
 export function rirPlan(weeks: number): number[] {
@@ -22,19 +24,40 @@ export function rirPlan(weeks: number): number[] {
 export const DELOAD_RIR = 4;
 /** Deload loads, as a share of the last accumulation week's. */
 export const DELOAD_LOAD = 0.9;
+/** Reps a set may run past the top of the range while the next load up is too big a jump. */
+export const OVERFLOW = 3;
+/** Sessions in a row behind the prescription before an exercise counts as stalled. */
+export const STALL_SESSIONS = 3;
 
+/** Sessions in a row the lifter fell behind, once that reaches {@link STALL_SESSIONS}. */
+type Stall = { stalled?: number };
 export type Advice =
   | { kind: "first"; reps: number; rir: number }
-  | { kind: "up"; fromKg: number; toKg: number; fromReps: number; toReps: number; rir: number }
-  | { kind: "reps"; kg: number; fromReps: number; toReps: number; rir: number }
-  | { kind: "down"; fromKg: number; toKg: number; fromReps: number; toReps: number; rir: number }
-  | { kind: "topOut"; kg: number; reps: number; rir: number }
+  | ({
+      kind: "up";
+      fromKg: number;
+      toKg: number;
+      fromReps: number;
+      toReps: number;
+      rir: number;
+    } & Stall)
+  | ({ kind: "reps"; kg: number; fromReps: number; toReps: number; rir: number } & Stall)
+  | ({
+      kind: "down";
+      fromKg: number;
+      toKg: number;
+      fromReps: number;
+      toReps: number;
+      rir: number;
+    } & Stall)
+  | ({ kind: "topOut"; kg: number; reps: number; rir: number } & Stall)
   | { kind: "deload"; kg: number | null; reps: number };
 
 export type PastSet = {
   weightKg: number | null;
   reps: number | null;
   rir: number | null;
+  effort?: Effort | null;
   targetReps: number | null;
   targetRir: number | null;
 };
@@ -43,11 +66,13 @@ export type PrescribeInput = {
   exercise: { equipment: Equipment; load?: "bodyweight" | "assisted" };
   gym?: GymSetup;
   reps: readonly [number, number];
-  /** This week's reps-in-reserve target. */
-  rir: number;
+  /** This week's reps-in-reserve target; outside a program, left out to match last time. */
+  rir?: number;
   sets: number;
   /** Completed working sets from the last comparable (non-deload) session, in order. */
   last?: PastSet[];
+  /** The comparable sessions before that, newest first, to tell a stall. */
+  history?: PastSet[][];
   bodyWeightKg?: number | null;
   deload?: boolean;
 };
@@ -62,13 +87,53 @@ const clamp = (value: number, min: number, max: number) => Math.min(max, Math.ma
 const same = (a: number, b: number) => Math.abs(a - b) < 0.01;
 
 /**
- * Reps in reserve a past set most likely had. Recorded RIR wins; a set that fell short of its
- * target reps is taken as done to failure; otherwise the lifter stopped where the week asked.
+ * Reps in reserve an effort rating stands for, read against the set's target: hard is 1 or
+ * fewer (0 when the target was already that close), good is 1–3 (the target when it's in that
+ * band), easy is 4 or more.
+ */
+export function effortRir(effort: Effort, targetRir: number | null): number {
+  const target = targetRir ?? 2;
+  if (effort === "hard") return target >= 2 ? 1 : 0;
+  if (effort === "good") return clamp(target, 1, 3);
+  return Math.max(4, target + 2);
+}
+
+/**
+ * Reps in reserve a past set most likely had. Recorded RIR wins, then the effort rating; a set
+ * that fell short of its target reps is taken as done to failure; otherwise the lifter stopped
+ * where the week asked.
  */
 export function assumedRir(set: PastSet): number {
   if (set.rir !== null) return set.rir;
+  if (set.effort) return effortRir(set.effort, set.targetRir);
   if (set.targetReps !== null && (set.reps ?? 0) < set.targetReps) return 0;
   return set.targetRir ?? 2;
+}
+
+const missed = (set: PastSet) => set.targetReps !== null && (set.reps ?? 0) < set.targetReps;
+
+/**
+ * Whether a session kept up with its prescription: no set short of its target reps, and the
+ * first set no harder than planned. Outside a program there's no plan, so only "hard" counts.
+ */
+export function keptUp(done: PastSet[]): boolean {
+  const first = done.find((s) => (s.reps ?? 0) > 0);
+  if (!first) return true;
+  if (done.some(missed)) return false;
+  return first.targetRir !== null
+    ? assumedRir(first) >= first.targetRir
+    : first.effort !== "hard" && (first.rir === null || first.rir >= 1);
+}
+
+/** Sessions in a row, newest first, that fell behind their prescription. */
+export function sessionsBehind(sessions: PastSet[][]): number {
+  let count = 0;
+  for (const done of sessions) {
+    if (!done.some((s) => (s.reps ?? 0) > 0)) continue;
+    if (keptUp(done)) break;
+    count++;
+  }
+  return count;
 }
 
 /** Converts between logged load and the load the body moves, for bodyweight movements. */
@@ -118,13 +183,16 @@ function candidates(input: PrescribeInput, upToKg: number): number[] {
  * - Deload: 90% of the last top load at the bottom of the range, well short of failure.
  * - Otherwise: estimate a 1RM from last time's best set (reps + assumed reps in reserve), then
  *   keep last time's load while this week's target reps stay in range; past the top of the range,
- *   move to the lightest heavier load that lands in range; below the bottom, the heaviest lighter
- *   one. When the next load up is too big a jump, stay and keep reps at the top of the range.
+ *   move to the lightest heavier load that lands in range (or one rep under it); below the
+ *   bottom, the heaviest lighter one. When the next load up is too big a jump, reps run up to
+ *   {@link OVERFLOW} past the top of the range until it fits.
+ * - A session that kept up earns at least a step, +1 rep or the next load, unless this week asks
+ *   for more in reserve than last time. One that fell behind holds or backs off.
  * - Later sets keep last time's drop-off in reps from the first set.
  */
 export function prescribe(input: PrescribeInput): Prescription {
   const [min, max] = input.reps;
-  const { rir, sets } = input;
+  const { sets } = input;
   const last = (input.last ?? []).filter((s) => (s.reps ?? 0) > 0);
   const model = loadModel(input);
   const repeat = (weightKg: number | null, reps: number[], setRir: number) =>
@@ -135,6 +203,7 @@ export function prescribe(input: PrescribeInput): Prescription {
     }));
 
   if (!last.length) {
+    const rir = input.rir ?? 2;
     const reps = Math.round((min + max) / 2);
     return { sets: repeat(null, [reps], rir), advice: { kind: "first", reps, rir } };
   }
@@ -146,6 +215,8 @@ export function prescribe(input: PrescribeInput): Prescription {
       : best
   );
   const topEffective = model.toEffective(top.weightKg);
+  const topReps = top.reps ?? 0;
+  const rir = input.rir ?? assumedRir(top);
 
   if (input.deload) {
     const target = topEffective * DELOAD_LOAD;
@@ -165,25 +236,30 @@ export function prescribe(input: PrescribeInput): Prescription {
     };
   }
 
+  // A step is owed when last time kept up and this week doesn't ask for more in reserve.
+  const owed = keptUp(last) && rir <= (top.targetRir ?? assumedRir(top));
+  const behind = sessionsBehind([last, ...(input.history ?? [])]);
+  const stall: Stall = behind >= STALL_SESSIONS ? { stalled: behind } : {};
+
   // Drop-off from the first set, among sets at the top set's load.
   const atTop = last.filter((s) => same(s.weightKg ?? 0, top.weightKg ?? 0));
   const drops = atTop.map((s) => (s.reps ?? 0) - (atTop[0].reps ?? 0));
-  const withDrop = (first: number) => drops.map((d) => clamp(first + d, Math.max(1, min - 2), max));
+  const withDrop = (first: number, cap: number) =>
+    drops.map((d) => clamp(first + d, Math.max(1, min - 2), cap));
 
-  const oneRm = e1rm(topEffective, top.reps ?? 0, assumedRir(top));
+  const oneRm = e1rm(topEffective, topReps, assumedRir(top));
   if (!(topEffective > 0) || !(oneRm > 0)) {
     // Bodyweight without a known body weight: progress reps only.
-    const reps = clamp(
-      (top.reps ?? min) + Math.max(0, (top.targetRir ?? assumedRir(top)) - rir),
-      min,
-      max
-    );
+    const cap = max + OVERFLOW;
+    let reps = topReps + Math.max(0, (top.targetRir ?? assumedRir(top)) - rir);
+    if (owed) reps = Math.max(reps, topReps + 1);
+    reps = clamp(reps, min, cap);
     return {
-      sets: repeat(top.weightKg, withDrop(reps), rir),
+      sets: repeat(top.weightKg, withDrop(reps, cap), rir),
       advice:
-        reps >= max
-          ? { kind: "topOut", kg: top.weightKg ?? 0, reps, rir }
-          : { kind: "reps", kg: top.weightKg ?? 0, fromReps: top.reps ?? 0, toReps: reps, rir },
+        reps >= cap && reps <= topReps
+          ? { kind: "topOut", kg: top.weightKg ?? 0, reps, rir, ...stall }
+          : { kind: "reps", kg: top.weightKg ?? 0, fromReps: topReps, toReps: reps, rir, ...stall },
     };
   }
 
@@ -192,54 +268,79 @@ export function prescribe(input: PrescribeInput): Prescription {
     .map((logged) => ({ logged, effective: model.toEffective(logged) }))
     .filter((o) => o.effective > 0)
     .sort((a, b) => a.effective - b.effective);
-  const current = options.reduce<(typeof options)[number] | undefined>(
+  type Option = (typeof options)[number];
+  const current = options.reduce<Option | undefined>(
     (best, o) =>
       !best || Math.abs(o.effective - topEffective) < Math.abs(best.effective - topEffective)
         ? o
         : best,
     undefined
   ) ?? { logged: top.weightKg ?? 0, effective: topEffective };
+  /** The next load up, when reps there would land in the range or one short of it. */
+  const reachable = (o: Option) => {
+    const next = options.find((x) => x.effective > o.effective + 0.01);
+    return next && repsAt(next.effective) >= min - 1 ? next : undefined;
+  };
+  /** Most reps to prescribe at a load: the range, or past it while the next load is too far. */
+  const capAt = (o: Option) => (reachable(o) ? max : max + OVERFLOW);
+  const moveUp = (from: Option) => {
+    const next = reachable(from);
+    return next ? { choice: next, reps: clamp(repsAt(next.effective), min - 1, max) } : undefined;
+  };
 
   let choice = current;
   let reps = repsAt(current.effective);
   if (reps > max) {
-    const heavier = options.find(
-      (o) => o.effective > current.effective + 0.01 && repsAt(o.effective) >= min
-    );
-    if (heavier && repsAt(heavier.effective) <= max) {
-      choice = heavier;
-      reps = repsAt(heavier.effective);
-    } else if (heavier) {
-      // Even the next load up leaves reps above the range: take it at the top of the range.
-      choice = heavier;
-      reps = max;
-    } else reps = max;
-  } else if (reps < min) {
+    const up = moveUp(current);
+    if (up) ({ choice, reps } = up);
+    else reps = Math.min(reps, capAt(current));
+  } else if (reps < (owed ? min - 1 : min)) {
+    // One short of the range after keeping up (a load just taken) stays; the step adds the rep.
     const lighter = [...options]
       .reverse()
       .find((o) => o.effective < current.effective - 0.01 && repsAt(o.effective) >= min);
     choice = lighter ?? options[0] ?? current;
     reps = clamp(repsAt(choice.effective), min, max);
   }
-  reps = clamp(reps, min, max);
 
-  const up = choice.effective > topEffective + 0.01;
-  const down = choice.effective < topEffective - 0.01;
-  const fromReps = top.reps ?? 0;
-  const advice: Advice = up
-    ? { kind: "up", fromKg: top.weightKg ?? 0, toKg: choice.logged, fromReps, toReps: reps, rir }
-    : down
+  const heavier = () => choice.effective > topEffective + 0.01;
+  const lighter = () => choice.effective < topEffective - 0.01;
+  if (owed && !heavier() && !lighter() && reps <= topReps) {
+    // Kept up but the estimate alone doesn't move: one more rep, or the next load.
+    if (topReps + 1 <= capAt(current)) {
+      choice = current;
+      reps = topReps + 1;
+    } else {
+      const up = moveUp(current);
+      if (up) ({ choice, reps } = up);
+    }
+  }
+  const cap = capAt(choice);
+  reps = clamp(reps, heavier() ? min - 1 : min, cap);
+
+  const advice: Advice = heavier()
+    ? {
+        kind: "up",
+        fromKg: top.weightKg ?? 0,
+        toKg: choice.logged,
+        fromReps: topReps,
+        toReps: reps,
+        rir,
+        ...stall,
+      }
+    : lighter()
       ? {
           kind: "down",
           fromKg: top.weightKg ?? 0,
           toKg: choice.logged,
-          fromReps,
+          fromReps: topReps,
           toReps: reps,
           rir,
+          ...stall,
         }
-      : reps >= max && repsAt(choice.effective) > max
-        ? { kind: "topOut", kg: choice.logged, reps, rir }
-        : { kind: "reps", kg: choice.logged, fromReps, toReps: reps, rir };
+      : reps >= cap && !reachable(choice) && reps <= topReps
+        ? { kind: "topOut", kg: choice.logged, reps, rir, ...stall }
+        : { kind: "reps", kg: choice.logged, fromReps: topReps, toReps: reps, rir, ...stall };
   // A new load resets the drop-off pattern to the old load's; keep it, it's the best guess.
-  return { sets: repeat(choice.logged, withDrop(reps), rir), advice };
+  return { sets: repeat(choice.logged, withDrop(reps, cap), rir), advice };
 }

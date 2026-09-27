@@ -16,8 +16,10 @@ import {
   weightEntries,
   workoutExercises,
   workouts,
+  efforts,
   feedbackRatings,
   setKinds,
+  sorenessLevels,
 } from "@/db";
 import { equipment, muscles, patterns } from "./exercises/types";
 
@@ -165,6 +167,8 @@ const dataSchema = z.strictObject({
       weightKg: kg.nullable(),
       reps: z.number().int().min(0).max(1000).nullable(),
       rir: z.number().finite().min(0).max(10).nullable(),
+      // Backups from before effort ratings don't have them.
+      effort: z.enum(efforts).nullable().optional(),
       side: z.enum(["left", "right"]).nullable(),
       completedAt: iso.nullable(),
       targetWeightKg: kg.nullable(),
@@ -174,7 +178,13 @@ const dataSchema = z.strictObject({
     1000000
   ),
   muscleFeedback: many(
-    z.strictObject({ id, workoutId: id, muscle: z.enum(muscles), rating: z.enum(feedbackRatings) })
+    z.strictObject({
+      id,
+      workoutId: id,
+      muscle: z.enum(muscles),
+      rating: z.enum(feedbackRatings).nullable(),
+      soreness: z.enum(sorenessLevels).nullable().optional(),
+    })
   ),
   activeGym: id.nullable(),
 });

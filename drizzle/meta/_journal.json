@@ -22,6 +22,13 @@
       "when": 1790518884449,
       "tag": "0002_deprioritized",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1790522791772,
+      "tag": "0003_effort_soreness",
+      "breakpoints": true
     }
   ]
 }

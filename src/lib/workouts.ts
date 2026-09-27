@@ -1,5 +1,6 @@
 import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, lt, max } from "drizzle-orm";
 import {
+  customExercises,
   db,
   gyms,
   preferences,
@@ -7,14 +8,17 @@ import {
   weightEntries,
   workoutExercises,
   workouts,
+  type Effort,
   type Gym,
   type SetKind,
   type Workout,
   type WorkoutExercise,
   type WorkoutSet,
 } from "@/db";
+import { exerciseById } from "./exercises";
 import { defaultGym } from "./loads";
 import type { Units } from "./metrics";
+import { prescribe, type PastSet } from "./progression";
 import { countsAsWork, e1rm } from "./strength";
 
 /* Every write here is one small transaction, so a workout survives the app being killed
@@ -263,8 +267,68 @@ export function startWorkout(options: { gymId?: number; name?: string; from?: nu
 }
 
 /**
- * Adds an exercise with sets prefilled from its last performance: the same loads and reps
- * as targets. With no history the sets start empty with the slot's rep range.
+ * Completed working sets from recent non-deload sessions that did an exercise, newest first:
+ * what progression builds on.
+ */
+export function comparableSessions(
+  exerciseId: string,
+  options: { limit?: number; excludeWorkout?: number } = {}
+): PastSet[][] {
+  const limit = options.limit ?? 6;
+  const rows = db
+    .select({ block: workoutExercises, workout: workouts })
+    .from(workoutExercises)
+    .innerJoin(workouts, eq(workouts.id, workoutExercises.workoutId))
+    .where(
+      and(
+        eq(workoutExercises.exerciseId, exerciseId),
+        isNotNull(workouts.endedAt),
+        eq(workouts.deload, false)
+      )
+    )
+    .orderBy(desc(workouts.startedAt))
+    .limit(limit + 4)
+    .all();
+  const found: PastSet[][] = [];
+  for (const { block, workout } of rows) {
+    if (workout.id === options.excludeWorkout) continue;
+    const done = db
+      .select()
+      .from(sets)
+      .where(and(eq(sets.workoutExerciseId, block.id), isNotNull(sets.completedAt)))
+      .orderBy(asc(sets.position))
+      .all()
+      .filter((s) => s.kind === "working");
+    if (done.length) found.push(done);
+    if (found.length >= limit) break;
+  }
+  return found;
+}
+
+/**
+ * Next targets outside a program: last time's sets at the same effort, one step on (+1 rep or
+ * the next load) when last time kept up. Undefined with no history or an unknown exercise.
+ */
+function freeTargets(workoutId: number, exerciseId: string, reps: readonly [number, number]) {
+  const [last, ...history] = comparableSessions(exerciseId, { excludeWorkout: workoutId });
+  const exercise = exerciseById(exerciseId, db.select().from(customExercises).all());
+  if (!last || !exercise) return undefined;
+  const workout = db.select().from(workouts).where(eq(workouts.id, workoutId)).get();
+  const gym = workout?.gymId ? gymById(workout.gymId) : undefined;
+  return prescribe({
+    exercise,
+    gym,
+    reps,
+    sets: Math.min(last.length, 10),
+    last,
+    history,
+    bodyWeightKg: workout?.bodyWeightKg ?? latestBodyWeight(),
+  });
+}
+
+/**
+ * Adds an exercise with sets prefilled from its last performance, a step on when it kept up.
+ * With no history the sets start empty with the slot's rep range.
  */
 function insertBlock(
   workoutId: number,
@@ -286,12 +350,17 @@ function insertBlock(
     })
     .returning()
     .get();
-  const last = lastPerformance(exerciseId, workoutId);
-  const previous = last?.sets.filter((s) => s.kind === "working") ?? [];
+  const next = freeTargets(workoutId, exerciseId, reps);
+  if (next)
+    db.update(workoutExercises)
+      .set({ advice: next.advice })
+      .where(eq(workoutExercises.id, block.id))
+      .run();
+  const targets = next?.sets ?? [];
   // Last time's set count unless the caller asks for a number (repeating a workout).
-  const total = count ?? (Math.min(previous.length, 10) || 3);
+  const total = count ?? (targets.length || 3);
   for (let i = 0; i < total; i++) {
-    const from = previous[Math.min(i, previous.length - 1)];
+    const from = targets[Math.min(i, targets.length - 1)];
     db.insert(sets)
       .values({
         workoutExerciseId: block.id,
@@ -373,12 +442,19 @@ function blockOf(setId: number) {
 
 export function updateSet(
   setId: number,
-  patch: Partial<Pick<SetRow, "weightKg" | "reps" | "rir" | "kind" | "side">>
+  patch: Partial<Pick<SetRow, "weightKg" | "reps" | "rir" | "effort" | "kind" | "side">>
 ) {
   const block = blockOf(setId);
   db.update(sets).set(patch).where(eq(sets.id, setId)).run();
   if (block) touch(block.workoutId);
 }
+
+/** How hard a set felt; a rating replaces any typed reps in reserve. */
+export function rateSet(setId: number, effort: Effort | null) {
+  updateSet(setId, { effort, rir: null });
+}
+
+export const setById = (setId: number) => db.select().from(sets).where(eq(sets.id, setId)).get();
 
 /**
  * Checks a set off. Values not typed are taken from its targets, so a set done as

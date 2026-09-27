@@ -15,6 +15,7 @@ import {
   completeSet,
   deleteSet,
   moveExercise,
+  rateSet,
   removeExercise,
   toggleSuperset,
   updateSet,
@@ -86,7 +87,8 @@ export function ExerciseCard({
     if (restAfter && row.kind !== "warmup")
       startRest(
         restSeconds ?? defaultRest(exercise),
-        `Next: ${block.sets.some((s) => s.id !== row.id && !s.completedAt && s.kind !== "warmup") || !nextName ? exercise.name : nextName}`
+        `Next: ${block.sets.some((s) => s.id !== row.id && !s.completedAt && s.kind !== "warmup") || !nextName ? exercise.name : nextName}`,
+        row.id
       );
   };
 
@@ -175,7 +177,7 @@ export function ExerciseCard({
           {bodyweight ? `+${unit}` : assisted ? `−${unit}` : unit}
         </SystemLabel>
         <SystemLabel className={twMerge(columns.reps, "text-center")}>Reps</SystemLabel>
-        <SystemLabel className={twMerge(columns.rir, "text-center")}>RIR</SystemLabel>
+        <SystemLabel className={twMerge(columns.rir, "text-center")}>Feel</SystemLabel>
         <View className={columns.done} />
       </View>
 
@@ -189,6 +191,7 @@ export function ExerciseCard({
           onChange={(patch) => write(() => updateSet(row.id, patch))}
           onComplete={(patch) => complete(row, patch)}
           onKind={(kind) => write(() => updateSet(row.id, { kind }))}
+          onEffort={(effort) => write(() => rateSet(row.id, effort))}
           onDelete={() => {
             const undo = write(() => deleteSet(row.id));
             onUndo("Set deleted", () => write(undo));

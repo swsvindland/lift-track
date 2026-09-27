@@ -11,13 +11,14 @@ import {
 } from "@/components/system";
 import { ActionMenu, Screen } from "@/components/ui";
 import { useQuery, write } from "@/lib/data";
+import { useExercises } from "@/lib/exercise-store";
 import { rirText } from "@/lib/format";
 import {
   activeMeso,
-  draftFrom,
   endProgram,
   isDeloadWeek,
   lastMeso,
+  nextBlock,
   nextSession,
   programDetail,
   programProgress,
@@ -39,6 +40,7 @@ export function PlanScreen() {
   const [building, setBuilding] = useState(false);
   const [importing, setImporting] = useState(false);
   const begin = useStartSession();
+  const { byId } = useExercises();
   const data = useQuery(() => {
     const meso = activeMeso();
     const detail = meso ? programDetail(meso.id) : undefined;
@@ -77,7 +79,7 @@ export function PlanScreen() {
             <SystemButton
               variant="secondary"
               icon="repeat"
-              onPress={() => write(() => startProgram(draftFrom(data.previous!)))}
+              onPress={() => write(() => startProgram(nextBlock(data.previous!, byId)))}
             >
               Run {data.previous.name} again
             </SystemButton>
@@ -192,7 +194,7 @@ export function PlanScreen() {
             </Text>
             <SystemButton
               icon="repeat"
-              onPress={() => write(() => startProgram(draftFrom(detail)))}
+              onPress={() => write(() => startProgram(nextBlock(detail, byId)))}
             >
               Run again
             </SystemButton>

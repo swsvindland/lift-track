@@ -4,10 +4,11 @@ import { useThemeColor } from "heroui-native";
 import { twMerge } from "tailwind-merge";
 import { SystemIcon, SystemText as Text } from "@/components/system";
 import { ActionMenu } from "@/components/ui";
-import type { SetKind } from "@/db";
+import type { Effort, SetKind } from "@/db";
 import { loadValue, setText } from "@/lib/format";
 import { parseNumber, toKg, type Units } from "@/lib/metrics";
 import type { SetRow as Row } from "@/lib/workouts";
+import { EffortDot, effortOf } from "./effort";
 
 const kindBadges: Record<SetKind, string> = { warmup: "W", working: "", drop: "D", myo: "M" };
 const kindNames: Record<SetKind, string> = {
@@ -37,6 +38,7 @@ export function SetRowView({
   onChange,
   onComplete,
   onKind,
+  onEffort,
   onDelete,
 }: {
   row: Row;
@@ -44,17 +46,10 @@ export function SetRowView({
   number: number;
   previous?: Row;
   units: Units;
-  onChange: (patch: {
-    weightKg?: number | null;
-    reps?: number | null;
-    rir?: number | null;
-  }) => void;
-  onComplete: (patch: {
-    weightKg?: number | null;
-    reps?: number | null;
-    rir?: number | null;
-  }) => void;
+  onChange: (patch: { weightKg?: number | null; reps?: number | null }) => void;
+  onComplete: (patch: { weightKg?: number | null; reps?: number | null }) => void;
   onKind: (kind: SetKind) => void;
+  onEffort: (effort: Effort | null) => void;
   onDelete: () => void;
 }) {
   const placeholder = useThemeColor("field-placeholder");
@@ -63,38 +58,32 @@ export function SetRowView({
   const text = {
     weight: row.weightKg !== null ? loadValue(row.weightKg, units) : "",
     reps: row.reps !== null ? String(row.reps) : "",
-    rir: row.rir !== null ? String(row.rir) : "",
   };
   const [weight, setWeight] = useState(text.weight);
   const [reps, setReps] = useState(text.reps);
-  const [rir, setRir] = useState(text.rir);
   // Inputs keep their own text while typing; when the stored set changes underneath (a commit,
   // completion, Undo, a unit switch), they take the stored values. Adjusted during render, so
   // focus stays where it is.
-  const stored = `${text.weight}|${text.reps}|${text.rir}`;
+  const stored = `${text.weight}|${text.reps}`;
   const [seen, setSeen] = useState(stored);
   if (seen !== stored) {
     setSeen(stored);
     setWeight(text.weight);
     setReps(text.reps);
-    setRir(text.rir);
   }
 
   /** What the inputs say, as a patch; blank means "use the target". */
   const patch = () => {
     const w = parseNumber(clean(weight));
     const r = parseNumber(clean(reps));
-    const x = parseNumber(clean(rir));
     return {
       weightKg: clean(weight) === "" ? null : Number.isFinite(w) ? toKg(w, units) : row.weightKg,
       reps: clean(reps) === "" ? null : Number.isInteger(r) ? r : row.reps,
-      rir: clean(rir) === "" ? null : Number.isFinite(x) && x <= 10 ? x : row.rir,
     };
   };
   const commit = () => {
     const next = patch();
-    if (next.weightKg !== row.weightKg || next.reps !== row.reps || next.rir !== row.rir)
-      onChange(next);
+    if (next.weightKg !== row.weightKg || next.reps !== row.reps) onChange(next);
   };
 
   const input = "h-11 rounded-xl bg-surface-secondary px-1 text-center font-mono text-base";
@@ -181,18 +170,11 @@ export function SetRowView({
         keyboardType="number-pad"
         selectTextOnFocus
       />
-      <TextInput
-        accessibilityLabel={`Set ${badge} reps in reserve`}
-        className={twMerge(columns.rir, input, "text-sm")}
-        style={{ color: String(foreground) }}
-        value={rir}
-        placeholder={row.targetRir !== null ? String(row.targetRir) : "–"}
-        placeholderTextColor={String(placeholder)}
-        onChangeText={setRir}
-        onEndEditing={commit}
-        keyboardType="decimal-pad"
-        selectTextOnFocus
-      />
+      {row.kind === "warmup" ? (
+        <View className={columns.rir} />
+      ) : (
+        <EffortDot effort={effortOf(row)} label={`Set ${badge}`} onChange={onEffort} />
+      )}
       <Pressable
         accessibilityRole="checkbox"
         accessibilityState={{ checked: done }}
