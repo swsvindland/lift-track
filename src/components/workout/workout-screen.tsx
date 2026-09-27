@@ -154,8 +154,8 @@ export function WorkoutScreen({ workoutId }: { workoutId?: number }) {
   const header = (
     <View className="flex-row items-center gap-1">
       <SystemIconButton
-        icon="chevron-down"
-        accessibilityLabel="Close workout"
+        icon="chevron-back"
+        accessibilityLabel="Back"
         onPress={() => router.back()}
       />
       <View className="flex-1">
