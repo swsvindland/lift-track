@@ -17,16 +17,19 @@ import {
   activeMeso,
   endProgram,
   isDeloadWeek,
-  lastMeso,
+  deleteProgram,
   nextBlock,
   nextSession,
+  otherPrograms,
   programDetail,
   programProgress,
   skipSession,
   startProgram,
+  startSaved,
   totalWeeks,
   unskipSession,
   weekRir,
+  type ProgramDetail,
   type SessionCell,
 } from "@/lib/programs";
 import { useStore } from "@/lib/store";
@@ -39,6 +42,96 @@ import { useStartSession } from "./use-start-session";
 const weekLabel = (detail: { rir: number[]; deload: boolean }, week: number) =>
   isDeloadWeek(detail, week) ? "Deload" : `Week ${week + 1}`;
 
+const openProgram = (id: number) =>
+  router.push({ pathname: "/program", params: { id: String(id) } });
+
+/** Saved and finished programs: tap to edit, or start one from its menu. */
+function ProgramList({ programs, running }: { programs: ProgramDetail[]; running?: string }) {
+  const { locale } = useStore();
+  const { byId } = useExercises();
+  if (!programs.length) return null;
+  const start = (program: ProgramDetail) => {
+    const go = () =>
+      write(() =>
+        program.status === "saved" ? startSaved(program.id) : startProgram(nextBlock(program, byId))
+      );
+    if (!running) return go();
+    Alert.alert(`Start ${program.name}?`, `${running} ends. Workouts you did stay in History.`, [
+      { text: "Cancel", style: "cancel" },
+      { text: "Start", onPress: go },
+    ]);
+  };
+  return (
+    <View className="gap-2">
+      <SystemLabel>Your programs</SystemLabel>
+      {programs.map((program) => {
+        const saved = program.status === "saved";
+        const days = `${program.days.length} ${program.days.length === 1 ? "day" : "days"}`;
+        return (
+          <Pressable
+            key={program.id}
+            accessibilityRole="button"
+            accessibilityHint={saved ? "Edit program" : "Set up the next block"}
+            onPress={() => openProgram(program.id)}
+            className="flex-row items-center gap-2 rounded-2xl bg-surface py-2 pl-4 pr-1 active:opacity-70"
+          >
+            <View className="flex-1 gap-1 py-1">
+              <Text className="font-semibold" numberOfLines={1}>
+                {program.name}
+              </Text>
+              <Text className="text-sm text-muted" numberOfLines={1}>
+                {saved
+                  ? `Not started · ${days} · ${program.rir.length} weeks`
+                  : `Finished ${new Date(program.endedAt ?? program.startedAt).toLocaleDateString(locale, { month: "short", day: "numeric" })} · ${days}`}
+              </Text>
+            </View>
+            <ActionMenu
+              accessibilityLabel={`${program.name} options`}
+              sections={[
+                {
+                  actions: [
+                    {
+                      key: "start",
+                      label: saved ? "Start" : "Run again",
+                      icon: saved ? "play" : "repeat",
+                      onPress: () => start(program),
+                    },
+                    {
+                      key: "edit",
+                      label: saved ? "Edit" : "Edit, then run again",
+                      icon: "create-outline",
+                      onPress: () => openProgram(program.id),
+                    },
+                    {
+                      key: "delete",
+                      label: "Delete",
+                      icon: "trash-outline",
+                      destructive: true,
+                      onPress: () =>
+                        Alert.alert(
+                          `Delete ${program.name}?`,
+                          saved ? undefined : "Workouts you did stay in History.",
+                          [
+                            { text: "Cancel", style: "cancel" },
+                            {
+                              text: "Delete",
+                              style: "destructive",
+                              onPress: () => write(() => deleteProgram(program.id)),
+                            },
+                          ]
+                        ),
+                    },
+                  ],
+                },
+              ]}
+            />
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
 export function PlanScreen() {
   const [building, setBuilding] = useState(false);
   const [importing, setImporting] = useState(false);
@@ -49,16 +142,15 @@ export function PlanScreen() {
   const data = useQuery(() => {
     const meso = activeMeso();
     const detail = meso ? programDetail(meso.id) : undefined;
-    const previous = meso ? undefined : lastMeso();
     return {
       detail,
       progress: detail ? programProgress(detail) : [],
       next: detail ? nextSession(detail) : undefined,
-      previous: previous ? programDetail(previous.id) : undefined,
+      others: otherPrograms(),
       at: trainingGym(units, detail?.gymId),
     };
   }, [units]);
-  const { detail, progress, next, at } = data;
+  const { detail, progress, next, at, others } = data;
 
   if (!detail)
     return (
@@ -81,15 +173,7 @@ export function PlanScreen() {
               Import one you have
             </SystemButton>
           </SystemPanel>
-          {data.previous && (
-            <SystemButton
-              variant="secondary"
-              icon="repeat"
-              onPress={() => write(() => startProgram(nextBlock(data.previous!, byId)))}
-            >
-              Run {data.previous.name} again
-            </SystemButton>
-          )}
+          <ProgramList programs={others} />
         </Screen>
         <ProgramBuilderSheet open={building} close={() => setBuilding(false)} />
         <ImportSheet open={importing} close={() => setImporting(false)} />
@@ -137,8 +221,7 @@ export function PlanScreen() {
                     key: "edit",
                     label: "Edit program",
                     icon: "create-outline",
-                    onPress: () =>
-                      router.push({ pathname: "/program", params: { id: String(detail.id) } }),
+                    onPress: () => openProgram(detail.id),
                   },
                   {
                     key: "new",
@@ -266,15 +349,25 @@ export function PlanScreen() {
           </View>
         </ScrollView>
 
-        <View className="gap-2">
-          <SystemLabel>Days</SystemLabel>
-          {detail.days.map((day) => (
-            <Text key={day.id} className="text-sm text-muted">
-              <Text className="text-sm font-semibold text-foreground">{day.name}: </Text>
-              {day.slots.length} exercises
-            </Text>
-          ))}
-        </View>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={`Edit ${detail.name}`}
+          onPress={() => openProgram(detail.id)}
+          className="flex-row items-center gap-3 rounded-2xl bg-surface p-4 active:opacity-70"
+        >
+          <View className="flex-1 gap-1">
+            <SystemLabel>Days</SystemLabel>
+            {detail.days.map((day) => (
+              <Text key={day.id} className="text-sm text-muted" numberOfLines={1}>
+                <Text className="text-sm font-semibold text-foreground">{day.name}: </Text>
+                {day.slots.map((slot) => byId(slot.exerciseId).name).join(", ")}
+              </Text>
+            ))}
+          </View>
+          <Text className="text-accent">Edit</Text>
+        </Pressable>
+
+        <ProgramList programs={others} running={detail.name} />
       </Screen>
       <ProgramBuilderSheet open={building} close={() => setBuilding(false)} />
       <ImportSheet open={importing} close={() => setImporting(false)} />

@@ -455,3 +455,52 @@ test("a program runs week by week: prescriptions, feedback-driven sets, skips an
   programs.endProgram(mesoId);
   assert.equal(programs.activeMeso(), undefined);
 });
+
+test("programs can be saved for later, started, listed and deleted", () => {
+  const { programs, builder, exercises } = lift();
+  const all = exercises.allExercises([]);
+  const types = require("./harness.cjs").load("src/lib/exercises/types.ts");
+  const draft = builder.buildProgram(
+    {
+      days: 3,
+      minutes: 60,
+      experience: "intermediate",
+      weeks: 4,
+      priorities: [],
+      deprioritized: [],
+      equipment: types.equipment,
+      settings: [],
+    },
+    all
+  );
+  const running = programs.startProgram({ ...draft, name: "Running" });
+  const saved = programs.saveProgram({ ...draft, name: "Later" });
+  // Saving doesn't touch the running program.
+  assert.equal(programs.activeMeso().id, running);
+  assert.deepEqual(
+    programs.otherPrograms().map((p) => [p.name, p.status]),
+    [["Later", "saved"]]
+  );
+  assert.equal(programs.programDetail(saved).days.length, 3);
+
+  // Editing a saved program keeps it saved.
+  programs.updateProgram(saved, { ...draft, name: "Later", days: draft.days.slice(0, 2) });
+  assert.equal(programs.programDetail(saved).days.length, 2);
+  assert.equal(programs.programDetail(saved).status, "saved");
+
+  // Starting it finishes the running one; saved programs list before finished ones.
+  const another = programs.saveProgram({ ...draft, name: "Another" });
+  programs.startSaved(saved);
+  assert.equal(programs.activeMeso().id, saved);
+  assert.deepEqual(
+    programs.otherPrograms().map((p) => [p.name, p.status]),
+    [
+      ["Another", "saved"],
+      ["Running", "finished"],
+    ]
+  );
+
+  programs.deleteProgram(another);
+  assert.equal(programs.programDetail(another), undefined);
+  assert.equal(programs.otherPrograms().length, 1);
+});

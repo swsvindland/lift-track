@@ -107,7 +107,7 @@ const dataSchema = z.strictObject({
       deprioritized: z.array(z.enum(muscles)).max(muscles.length).optional(),
       gymId: id.nullable().optional(),
       method: z.number().int().min(1).max(100),
-      status: z.enum(["active", "finished"]),
+      status: z.enum(["saved", "active", "finished"]),
       startedAt: iso,
       endedAt: iso.nullable(),
     }),
