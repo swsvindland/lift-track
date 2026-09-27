@@ -1,5 +1,6 @@
 import { asc, sql } from "drizzle-orm";
 import {
+  aiNudges,
   customExercises,
   db,
   exerciseSettings,
@@ -110,6 +111,7 @@ export function erasePersonalRecords() {
   db.all(sql`PRAGMA secure_delete = ON`);
   db.transaction((tx) => {
     for (const table of [
+      aiNudges,
       muscleFeedback,
       sets,
       workoutExercises,

@@ -215,6 +215,8 @@ export function Field({
   selectTextOnFocus = false,
   multiline = false,
   onSubmit,
+  onDone,
+  accessory,
 }: {
   label: string;
   value: string;
@@ -230,10 +232,21 @@ export function Field({
   multiline?: boolean;
   /** Return runs this instead of starting a new line. */
   onSubmit?: () => void;
+  /** Runs when editing ends, however it ends. */
+  onDone?: () => void;
+  /** Shown beside the label, such as the mark of the model that reads the field. */
+  accessory?: ReactNode;
 }) {
   return (
     <TextField isDisabled={disabled}>
-      <Label>{label}</Label>
+      {accessory ? (
+        <View className="flex-row items-center gap-1.5">
+          <Label>{label}</Label>
+          {accessory}
+        </View>
+      ) : (
+        <Label>{label}</Label>
+      )}
       <Input
         accessibilityLabel={label}
         autoFocus={autoFocus}
@@ -255,6 +268,7 @@ export function Field({
         returnKeyType={onSubmit ? "go" : undefined}
         submitBehavior={onSubmit ? "blurAndSubmit" : undefined}
         onSubmitEditing={onSubmit}
+        onEndEditing={onDone}
       />
     </TextField>
   );

@@ -397,3 +397,119 @@ export async function describeExercise(
     .slice(0, 8)
     .map((x) => x.e);
 }
+
+// ——— What a lifter said about a session ———
+
+export type SessionSummary = {
+  exercises: { id: string; name: string; muscles: Muscle[]; sets: string }[];
+  muscles: Muscle[];
+};
+
+/** Bounded nudges for next time: never loads, reps or set counts, only a direction. */
+export type SessionReading = {
+  exercises: { exerciseId: string; value: 1 | -1; reason: string }[];
+  muscles: { muscle: Muscle; value: 1 | -1; reason: string }[];
+  /** Poor sleep, illness or stress: a dip that day is held, not backed off from. */
+  tired: boolean;
+};
+
+function sessionSchema(summary: SessionSummary): JsonSchema {
+  return {
+    type: "object",
+    properties: {
+      exercises: {
+        type: "array",
+        maxItems: summary.exercises.length,
+        items: {
+          type: "object",
+          properties: {
+            number: {
+              type: "integer",
+              minimum: 1,
+              maximum: summary.exercises.length,
+              description: "the exercise's number in the list",
+            },
+            change: {
+              type: "string",
+              enum: ["push", "hold"],
+              description:
+                "push: it felt easy, light or strong; hold: pain, discomfort, bad form, a struggle, or it felt off",
+            },
+            reason: { type: "string", description: "3 to 8 words, from the note" },
+          },
+          required: ["number", "change", "reason"],
+        },
+      },
+      muscles: {
+        type: "array",
+        maxItems: summary.muscles.length,
+        items: {
+          type: "object",
+          properties: {
+            muscle: { type: "string", enum: summary.muscles },
+            change: {
+              type: "string",
+              enum: ["more", "fewer"],
+              description:
+                "more: it wasn't worked enough or recovers fast; fewer: beaten up, very sore or aching",
+            },
+            reason: { type: "string", description: "3 to 8 words, from the note" },
+          },
+          required: ["muscle", "change", "reason"],
+        },
+      },
+      tired: {
+        type: "boolean",
+        description: "the note mentions poor sleep, illness, stress or being run down",
+      },
+    },
+    required: ["exercises", "muscles", "tired"],
+  };
+}
+
+function readSessionReply(reply: unknown, summary: SessionSummary): SessionReading {
+  const r = (reply ?? {}) as { exercises?: unknown[]; muscles?: unknown[]; tired?: unknown };
+  const exercises: SessionReading["exercises"] = [];
+  for (const raw of Array.isArray(r.exercises) ? r.exercises : []) {
+    const x = raw as { number?: unknown; change?: unknown; reason?: unknown };
+    const n = int(x.number, 1, summary.exercises.length);
+    const id = n ? summary.exercises[n - 1].id : undefined;
+    const value = x.change === "push" ? 1 : x.change === "hold" ? -1 : 0;
+    if (!id || !value || exercises.some((e) => e.exerciseId === id)) continue;
+    exercises.push({ exerciseId: id, value, reason: str(x.reason, 60) || "From your note" });
+  }
+  const muscles: SessionReading["muscles"] = [];
+  for (const raw of Array.isArray(r.muscles) ? r.muscles : []) {
+    const x = raw as { muscle?: unknown; change?: unknown; reason?: unknown };
+    const muscle = summary.muscles.find((m) => m === x.muscle);
+    const value = x.change === "more" ? 1 : x.change === "fewer" ? -1 : 0;
+    if (!muscle || !value || muscles.some((m) => m.muscle === muscle)) continue;
+    muscles.push({ muscle, value, reason: str(x.reason, 60) || "From your note" });
+  }
+  return { exercises, muscles, tired: r.tired === true };
+}
+
+/**
+ * A note about a finished session ("elbow was cranky on skull crushers, bench flew up") read by
+ * the phone's own model into nudges for next time. Null when there's no model or it didn't
+ * answer: the note is kept either way, and progression runs on its own.
+ */
+export async function readSessionNote(
+  note: string,
+  summary: SessionSummary,
+  generate?: Generate
+): Promise<SessionReading | null> {
+  if (!note.trim()) return { exercises: [], muscles: [], tired: false };
+  if (!generate || !summary.exercises.length) return null;
+  const list = summary.exercises
+    .map((e, i) => `${i + 1}. ${e.name} (${e.muscles.join(", ")}): ${e.sets}`)
+    .join("\n");
+  const reply = await tryGenerate(generate, {
+    instructions:
+      "You read a lifter's note about the workout they just finished and turn it into small adjustments for next time. Only act on what the note says: leave out every exercise and muscle it doesn't mention. Reasons are 3 to 8 plain words. Never give loads, reps or set counts.",
+    prompt: `Workout:\n${list}\nMuscles trained: ${summary.muscles.join(", ")}\n\nNote: ${clampText(note, 800)}`,
+    schema: sessionSchema(summary),
+    maxTokens: 600,
+  });
+  return reply === null ? null : readSessionReply(reply, summary);
+}

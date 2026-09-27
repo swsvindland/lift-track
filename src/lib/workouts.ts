@@ -1,5 +1,6 @@
 import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, lt, max } from "drizzle-orm";
 import {
+  aiNudges,
   customExercises,
   db,
   gyms,
@@ -8,6 +9,7 @@ import {
   weightEntries,
   workoutExercises,
   workouts,
+  type AiNudge,
   type Effort,
   type Gym,
   type SetKind,
@@ -16,9 +18,10 @@ import {
   type WorkoutSet,
 } from "@/db";
 import { exerciseById } from "./exercises";
+import type { SessionReading } from "./lift-ai";
 import { defaultGym } from "./loads";
 import type { Units } from "./metrics";
-import { prescribe, type PastSet } from "./progression";
+import { keptUp, prescribe, type PastSet } from "./progression";
 import { countsAsWork, e1rm } from "./strength";
 
 /* Every write here is one small transaction, so a workout survives the app being killed
@@ -286,7 +289,7 @@ export function comparableSessions(
         eq(workouts.deload, false)
       )
     )
-    .orderBy(desc(workouts.startedAt))
+    .orderBy(desc(workouts.startedAt), desc(workouts.id))
     .limit(limit + 4)
     .all();
   const found: PastSet[][] = [];
@@ -305,9 +308,93 @@ export function comparableSessions(
   return found;
 }
 
+// ——— What the phone's model read in a note ———
+
+export function setWorkoutNote(workoutId: number, note: string) {
+  db.update(workouts)
+    .set({ note: note.trim(), updatedAt: Date.now() })
+    .where(eq(workouts.id, workoutId))
+    .run();
+}
+
+/**
+ * Replaces a session's nudges with what its note says now. On a rough day, exercises that fell
+ * behind are held rather than backed off from.
+ */
+export function saveNudges(workoutId: number, reading: SessionReading) {
+  const detail = workoutDetail(workoutId);
+  const exercises = [...reading.exercises];
+  if (reading.tired && detail)
+    for (const block of detail.exercises) {
+      const done = block.sets.filter((s) => s.kind === "working" && s.completedAt);
+      if (!done.length || keptUp(done)) continue;
+      if (exercises.some((e) => e.exerciseId === block.exerciseId)) continue;
+      exercises.push({
+        exerciseId: block.exerciseId,
+        value: -1,
+        reason: "Rough day: hold, don't back off",
+      });
+    }
+  db.transaction((tx) => {
+    tx.delete(aiNudges).where(eq(aiNudges.workoutId, workoutId)).run();
+    for (const e of exercises)
+      tx.insert(aiNudges)
+        .values({ workoutId, exerciseId: e.exerciseId, value: e.value, reason: e.reason })
+        .run();
+    for (const m of reading.muscles)
+      tx.insert(aiNudges)
+        .values({ workoutId, muscle: m.muscle, value: m.value, reason: m.reason })
+        .run();
+  });
+}
+
+export const nudgesFor = (workoutId: number) =>
+  db.select().from(aiNudges).where(eq(aiNudges.workoutId, workoutId)).all();
+
+export function dismissNudges(ids: number[]) {
+  if (ids.length)
+    db.update(aiNudges).set({ dismissed: true }).where(inArray(aiNudges.id, ids)).run();
+}
+
+/** The model's live nudge on an exercise from the last session that did it. */
+export function exerciseNudge(exerciseId: string, excludeWorkout?: number): AiNudge | undefined {
+  const source = db
+    .select({ id: workouts.id })
+    .from(workoutExercises)
+    .innerJoin(workouts, eq(workouts.id, workoutExercises.workoutId))
+    .where(
+      and(
+        eq(workoutExercises.exerciseId, exerciseId),
+        isNotNull(workouts.endedAt),
+        eq(workouts.deload, false)
+      )
+    )
+    .orderBy(desc(workouts.startedAt), desc(workouts.id))
+    .limit(2)
+    .all()
+    .find((w) => w.id !== excludeWorkout);
+  if (!source) return undefined;
+  return db
+    .select()
+    .from(aiNudges)
+    .where(
+      and(
+        eq(aiNudges.workoutId, source.id),
+        eq(aiNudges.exerciseId, exerciseId),
+        eq(aiNudges.dismissed, false)
+      )
+    )
+    .get();
+}
+
+/** A prescription's advice with the model's nudge recorded on it, for the screen and undo. */
+export const withNudge = <T extends object>(advice: T, nudge: AiNudge | undefined) =>
+  nudge ? { ...advice, ai: nudge.value, aiReason: nudge.reason, aiIds: String(nudge.id) } : advice;
+
 /**
  * Next targets outside a program: last time's sets at the same effort, one step on (+1 rep or
- * the next load) when last time kept up. Undefined with no history or an unknown exercise.
+ * the next load) when last time kept up, and the model's nudge from a note on top. Undefined
+ * with no history or an unknown exercise.
  */
 function freeTargets(workoutId: number, exerciseId: string, reps: readonly [number, number]) {
   const [last, ...history] = comparableSessions(exerciseId, { excludeWorkout: workoutId });
@@ -315,7 +402,8 @@ function freeTargets(workoutId: number, exerciseId: string, reps: readonly [numb
   if (!last || !exercise) return undefined;
   const workout = db.select().from(workouts).where(eq(workouts.id, workoutId)).get();
   const gym = workout?.gymId ? gymById(workout.gymId) : undefined;
-  return prescribe({
+  const nudge = exerciseNudge(exerciseId, workoutId);
+  const result = prescribe({
     exercise,
     gym,
     reps,
@@ -323,7 +411,9 @@ function freeTargets(workoutId: number, exerciseId: string, reps: readonly [numb
     last,
     history,
     bodyWeightKg: workout?.bodyWeightKg ?? latestBodyWeight(),
+    nudge: nudge?.value,
   });
+  return { ...result, advice: withNudge(result.advice, nudge) };
 }
 
 /**

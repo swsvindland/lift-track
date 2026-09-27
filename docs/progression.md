@@ -1,6 +1,6 @@
 # Programs and progression, method 2
 
-Vector Lift writes every set of a program session before you start it, and prefills every exercise in a free workout. The rules below are deterministic: the same history always gives the same prescription, and each exercise shows one line on why. No model is involved.
+Vector Lift writes every set of a program session before you start it, and prefills every exercise in a free workout. The rules below are deterministic: the same history always gives the same prescription, and each exercise shows one line on why. On phones with their own model, a note about a session can nudge the result one step either way ([on-device AI](ai.md#nudges-from-a-note)). The nudge is marked and can be undone, and without a note or a model nothing changes.
 
 The aim is progressive overload: a session done as prescribed is always followed by a bit more, one rep or the next load. Two quick signals steer it:
 

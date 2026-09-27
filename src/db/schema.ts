@@ -157,6 +157,28 @@ export const muscleFeedback = sqliteTable(
 );
 export type MuscleFeedback = typeof muscleFeedback.$inferSelect;
 
+/**
+ * What the phone's own model read in a session's note, as bounded nudges for next time: an
+ * exercise pushed (+1) or held (−1), or a muscle given a set more or less (±1). The progression
+ * method applies them on top of its own answer; undoing one dismisses it.
+ */
+export const aiNudges = sqliteTable(
+  "ai_nudges",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    workoutId: integer("workout_id")
+      .notNull()
+      .references(() => workouts.id, { onDelete: "cascade" }),
+    exerciseId: text("exercise_id"),
+    muscle: text("muscle").$type<Muscle>(),
+    value: integer("value").notNull(),
+    reason: text("reason").notNull(),
+    dismissed: integer("dismissed", { mode: "boolean" }).notNull().default(false),
+  },
+  (t) => [index("ai_nudges_workout").on(t.workoutId)]
+);
+export type AiNudge = typeof aiNudges.$inferSelect;
+
 export const workouts = sqliteTable(
   "workouts",
   {

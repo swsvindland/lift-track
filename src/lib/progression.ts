@@ -29,9 +29,16 @@ export const OVERFLOW = 3;
 /** Sessions in a row behind the prescription before an exercise counts as stalled. */
 export const STALL_SESSIONS = 3;
 
-/** Sessions in a row the lifter fell behind, once that reaches {@link STALL_SESSIONS}. */
-type Stall = { stalled?: number };
-export type Advice =
+type Stall = {
+  /** Sessions in a row the lifter fell behind, once that reaches {@link STALL_SESSIONS}. */
+  stalled?: number;
+};
+/**
+ * What the phone's model changed, so the screen can show it and undo it: a push (+1) or hold
+ * (−1) on the load and reps, sets added or taken (±), its reason, and the nudges' ids.
+ */
+export type AiApplied = { ai?: number; aiSets?: number; aiReason?: string; aiIds?: string };
+export type Advice = (
   | { kind: "first"; reps: number; rir: number }
   | ({
       kind: "up";
@@ -51,13 +58,16 @@ export type Advice =
       rir: number;
     } & Stall)
   | ({ kind: "topOut"; kg: number; reps: number; rir: number } & Stall)
-  | { kind: "deload"; kg: number | null; reps: number };
+  | { kind: "deload"; kg: number | null; reps: number }
+) &
+  AiApplied;
 
 export type PastSet = {
   weightKg: number | null;
   reps: number | null;
   rir: number | null;
   effort?: Effort | null;
+  targetWeightKg?: number | null;
   targetReps: number | null;
   targetRir: number | null;
 };
@@ -75,6 +85,11 @@ export type PrescribeInput = {
   history?: PastSet[][];
   bodyWeightKg?: number | null;
   deload?: boolean;
+  /**
+   * The phone's model read the lifter's note: +1 pushes (last time counts as a rep easier),
+   * −1 holds (last time's targets again, no step and no back-off).
+   */
+  nudge?: number;
 };
 
 export type Prescription = {
@@ -193,7 +208,10 @@ function candidates(input: PrescribeInput, upToKg: number): number[] {
 export function prescribe(input: PrescribeInput): Prescription {
   const [min, max] = input.reps;
   const { sets } = input;
-  const last = (input.last ?? []).filter((s) => (s.reps ?? 0) > 0);
+  const push = input.nudge === 1;
+  const last = (input.last ?? [])
+    .filter((s) => (s.reps ?? 0) > 0)
+    .map((s) => (push ? { ...s, rir: assumedRir(s) + 1 } : s));
   const model = loadModel(input);
   const repeat = (weightKg: number | null, reps: number[], setRir: number) =>
     Array.from({ length: Math.max(1, sets) }, (_, i) => ({
@@ -216,7 +234,8 @@ export function prescribe(input: PrescribeInput): Prescription {
   );
   const topEffective = model.toEffective(top.weightKg);
   const topReps = top.reps ?? 0;
-  const rir = input.rir ?? assumedRir(top);
+  // Outside a program, match last time's effort (as it was, before any push).
+  const rir = input.rir ?? assumedRir(top) - (push ? 1 : 0);
 
   if (input.deload) {
     const target = topEffective * DELOAD_LOAD;
@@ -233,6 +252,17 @@ export function prescribe(input: PrescribeInput): Prescription {
     return {
       sets: repeat(logged ?? null, [min], DELOAD_RIR),
       advice: { kind: "deload", kg: logged ?? null, reps: min },
+    };
+  }
+
+  if (input.nudge === -1) {
+    // Held on the lifter's word: last time's targets again, or what was done where there were none.
+    const first = last[0];
+    const kg = first.targetWeightKg ?? first.weightKg;
+    const reps = last.map((s) => clamp(s.targetReps ?? s.reps ?? min, 1, max + OVERFLOW));
+    return {
+      sets: repeat(kg, reps, rir),
+      advice: { kind: "reps", kg: kg ?? 0, fromReps: topReps, toReps: reps[0], rir },
     };
   }
 

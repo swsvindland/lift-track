@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { eq } from "drizzle-orm";
 import {
+  aiNudges,
   customExercises,
   db,
   exerciseSettings,
@@ -186,6 +187,18 @@ const dataSchema = z.strictObject({
       soreness: z.enum(sorenessLevels).nullable().optional(),
     })
   ),
+  // Backups from before the model's nudges don't have them.
+  aiNudges: many(
+    z.strictObject({
+      id,
+      workoutId: id,
+      exerciseId: text.min(1).max(100).nullable(),
+      muscle: z.enum(muscles).nullable(),
+      value: z.number().int().min(-1).max(1),
+      reason: text.max(200),
+      dismissed: z.boolean(),
+    })
+  ).optional(),
   activeGym: id.nullable(),
 });
 
@@ -213,6 +226,7 @@ const schema = z
     ids(data.weights, "weights");
     ids(data.mesoSkips, "skipped sessions");
     ids(data.muscleFeedback, "feedback");
+    ids(data.aiNudges ?? [], "nudges");
     if (new Set(data.customExercises.map((e) => e.id)).size !== data.customExercises.length)
       fail("Duplicate custom exercises");
     if (
@@ -235,6 +249,8 @@ const schema = z
     if (data.workoutExercises.some((b) => !workoutIds.has(b.workoutId) || !has(slotIds, b.slotId)))
       fail("Exercise without workout");
     if (data.sets.some((s) => !blockIds.has(s.workoutExerciseId))) fail("Set without exercise");
+    if ((data.aiNudges ?? []).some((n) => !workoutIds.has(n.workoutId)))
+      fail("Nudge without workout");
     if (data.muscleFeedback.some((f) => !workoutIds.has(f.workoutId)))
       fail("Feedback without workout");
     if (data.mesocycles.filter((m) => m.status === "active").length > 1)
@@ -311,6 +327,7 @@ export function createBackup(): Backup {
         workoutExercises: tx.select().from(workoutExercises).all(),
         sets: tx.select().from(sets).all(),
         muscleFeedback: tx.select().from(muscleFeedback).all(),
+        aiNudges: tx.select().from(aiNudges).all(),
         activeGym: gymRows.some((g) => g.id === activeGym) ? activeGym : null,
       },
     };
@@ -339,6 +356,7 @@ export function restoreBackup(value: unknown, recoveryUri?: string) {
   db.transaction((tx) => {
     // Children first; foreign keys are enforced.
     for (const table of [
+      aiNudges,
       muscleFeedback,
       sets,
       workoutExercises,
@@ -403,6 +421,7 @@ export function restoreBackup(value: unknown, recoveryUri?: string) {
         .run();
     for (const row of data.sets) tx.insert(sets).values(row).run();
     for (const row of data.muscleFeedback) tx.insert(muscleFeedback).values(row).run();
+    for (const row of data.aiNudges ?? []) tx.insert(aiNudges).values(row).run();
     if (data.activeGym !== null) setPreference(tx, "activeGym", String(data.activeGym));
     else tx.delete(preferences).where(eq(preferences.key, "activeGym")).run();
     if (recoveryUri) setPreference(tx, "recoveryBackupUri", recoveryUri);

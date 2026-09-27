@@ -1,8 +1,8 @@
 # On-device AI
 
-Vector Lift uses the phone's own model only to turn words into structure: Apple Foundation Models (Apple Intelligence) on iPhone, Gemini Nano on supported Android phones. Loads, reps, volume and progression never come from a model; they come from [the progression method](progression.md).
+Vector Lift uses the phone's own model only to turn words into structure: Apple Foundation Models (Apple Intelligence) on iPhone, Gemini Nano on supported Android phones. Loads, reps and sets come from [the progression method](progression.md). The model never produces a number. What it reads from a session note can only nudge the method one step either way, and each nudge shows the model's mark and can be undone.
 
-Every result is a draft you confirm. Nothing is sent anywhere, there's no cloud fallback, and phones without a model keep every feature through shorthand parsing and manual entry.
+Every other result is a draft you confirm. Nothing is sent anywhere, there's no cloud fallback, and phones without a model keep every feature through shorthand parsing and manual entry.
 
 ## What it does
 
@@ -12,6 +12,7 @@ Every result is a draft you confirm. Nothing is sent anywhere, there's no cloud 
 | Plan → **Import a program**                                 | Pasted text, or a photo of a printed or handwritten page                                       | Days, exercises, sets and rep ranges, reviewed, then opened in the program editor               | Lists like "Bench Press 3x6-8" are read; photos are read with text recognition on every phone |
 | Build a program → **Describe what you want**                | "4 days, an hour, only dumbbells, cranky shoulder, bigger arms, smaller quads"                 | The builder's answers filled in; equipment narrowed; painful movements left out of this program | Days, minutes and weeks are read                                                              |
 | Add exercise, no results → **Find it from the description** | "machine where you push your knees out"                                                        | Library exercises with that movement, muscles and equipment                                     | Not offered                                                                                   |
+| Session summary → **How did it go?**                        | "Elbow was cranky on skull crushers, bench flew up, chest is wrecked, slept 4 hours"           | Nudges for next time: push or hold an exercise, a set more or less for a muscle                 | The note is saved; progression runs on its own                                                |
 
 ## How it works
 
@@ -41,6 +42,17 @@ Every result is a draft you confirm. Nothing is sent anywhere, there's no cloud 
 
 The native bridge is the `local-ai` module from Vector Macros, with its text-recognition orientation check made general. It runs Foundation Models' `SystemLanguageModel` only, never Private Cloud Compute, and ML Kit GenAI's Prompt API on Android.
 
+## Nudges from a note
+
+The note is read with a numbered list of what was done and the muscles trained. The reply can only:
+
+- **push** an exercise the note says felt easy or strong: last time counts as one rep easier, so the method steps further;
+- **hold** an exercise the note says hurt, felt off or was a struggle: last time's targets again, with no step and no back-off;
+- move a muscle the note calls beaten up or under-worked by **one set**, within the method's limits;
+- say the lifter was **run down** (sleep, illness, stress): exercises that fell behind that day are held instead of backed off from.
+
+Exercises and muscles not in the session are dropped, as is anything outside those choices. Nudges are applied when the next session is built: exercise nudges the next time that exercise comes up, set nudges the next time that program day does. The session summary lists them under **Next time**, each with an ✕. In the workout, each changed exercise shows the mark, the reason and **Undo**. Undo puts back the set count and targets the method alone would give, and dismisses the nudge. The code is `readSessionNote` in `lift-ai.ts`, `saveNudges`/`exerciseNudge` in `workouts.ts` and `planDay`/`undoAi` in `programs.ts`.
+
 ## Verification
 
 - **Tests:** `pnpm test` (`tests/ai.test.cjs`) covers:
@@ -52,6 +64,11 @@ The native bridge is the `local-ai` module from Vector Macros, with its text-rec
   - replies validated, model failures falling back
   - builder hints and describing an exercise
   - Apple schema completion and OCR line order
+- **Tests:** `tests/nudges.test.cjs` covers:
+  - a note's reply bounded and checked
+  - push and hold
+  - nudges applied to a program session and undone
+  - a rough day holding instead of backing off
 - **Same prompts on this Mac:** the schemas and prompts were run against the same on-device model on macOS 27:
   - The curls sentence came back as 40×12, 40×12, 35×10 lb.
   - A one-line push/pull/legs page came back as the right 10 exercises on 3 days. An instruction that named day words made the model use them as exercises, so it was reworded, and the reply filter drops them anyway.
@@ -61,6 +78,6 @@ The native bridge is the `local-ai` module from Vector Macros, with its text-rec
   - Importing a typed push/pull program: 8 of 8 exercises matched, then opened in the editor.
   - The describe-to-find button.
 
-  A real iPhone with Apple Intelligence is the remaining check for the model path.
+  A real iPhone with Apple Intelligence is the remaining check for the model path. The session note prompt hasn't been run against the real model yet.
 
 - **Still to do:** Android compiles with the module from Vector Macros but hasn't run Gemini Nano on a device. Before release, test on current and older iPhones and a midrange Android, with real dictation and real printed programs.

@@ -3,6 +3,7 @@ import { router } from "expo-router";
 import * as Haptics from "expo-haptics";
 import { twMerge } from "tailwind-merge";
 import { SystemButton, SystemLabel, SystemText as Text } from "@/components/system";
+import { AiMark } from "@/components/ai-mark";
 import { ActionMenu } from "@/components/ui";
 import type { Gym } from "@/db";
 import { write } from "@/lib/data";
@@ -37,6 +38,7 @@ export function ExerciseCard({
   onSwap,
   onUndo,
   advice,
+  ai,
   nextName,
 }: {
   block: ExerciseBlock;
@@ -52,8 +54,10 @@ export function ExerciseCard({
   restAfter: boolean;
   onSwap: () => void;
   onUndo: (message: string, undo: () => void) => void;
-  /** Why the targets are what they are, for program sessions. */
+  /** Why the targets are what they are. */
   advice?: string;
+  /** What the phone's model changed from a note, with a way to take it back. */
+  ai?: { reason: string; undo: () => void };
   /** The exercise after this one, named in the rest timer once this one is done. */
   nextName?: string;
 }) {
@@ -116,6 +120,24 @@ export function ExerciseCard({
             · {block.repMin}–{block.repMax} reps
           </Text>
           {!!advice && <Text className="text-sm text-accent-soft-foreground">{advice}</Text>}
+          {ai && (
+            <View className="flex-row items-center gap-1.5">
+              <AiMark size={14} color="accent-soft-foreground" />
+              <Text className="flex-1 text-sm text-accent-soft-foreground" numberOfLines={2}>
+                {ai.reason}
+              </Text>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Undo what the model changed"
+                hitSlop={8}
+                onPress={ai.undo}
+              >
+                <Text className="text-sm font-medium text-accent-soft-foreground underline">
+                  Undo
+                </Text>
+              </Pressable>
+            </View>
+          )}
         </Pressable>
         <ActionMenu
           accessibilityLabel={`${exercise.name} options`}

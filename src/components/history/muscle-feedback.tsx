@@ -37,7 +37,8 @@ export function MuscleFeedback({ detail }: { detail: WorkoutDetail }) {
       <View className="gap-1">
         <SystemLabel>How did each muscle feel?</SystemLabel>
         <Text className="text-sm text-muted">
-          Optional. Next week&apos;s sets follow this; skip it and your reps decide.
+          Optional: how much it was, then how sore you were coming in. Next week&apos;s sets follow
+          this; skip it and your reps decide.
         </Text>
       </View>
       {muscles.map((muscle) => {
@@ -59,8 +60,7 @@ export function MuscleFeedback({ detail }: { detail: WorkoutDetail }) {
                 />
               ))}
             </View>
-            <View className="flex-row flex-wrap items-center gap-2">
-              <Text className="text-sm text-muted">Coming in:</Text>
+            <View className="flex-row flex-wrap gap-2">
               {soreness.map((r) => (
                 <Chip
                   key={r.value}
