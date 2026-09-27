@@ -15,6 +15,7 @@ function ai() {
     "./program-text": programText,
     "./workout-text": workoutText,
     "./metrics": metrics,
+    "./program-builder": ctx.builder,
   });
   return { ...ctx, ai: mod, all: ctx.exercises.allExercises([]) };
 }
@@ -170,6 +171,8 @@ test("messy pages go to the model; hints read numbers directly and the rest from
 
   const offline = await liftAi.readBuilderHints("4 days a week, about 50 minutes, 5 weeks");
   assert.deepEqual([offline.days, offline.minutes, offline.weeks], [4, 45, 5]);
+  assert.equal((await liftAi.readBuilderHints("half an hour, 3 days a week")).minutes, 30);
+  assert.equal((await liftAi.readBuilderHints("25 minutes")).minutes, 30);
   const hints = await liftAi.readBuilderHints(
     "an hour, only dumbbells at home, cranky left shoulder, want bigger arms",
     async () => ({
@@ -177,6 +180,7 @@ test("messy pages go to the model; hints read numbers directly and the rest from
       minutes: 0,
       experience: "unknown",
       priorities: ["biceps", "triceps", "not-a-muscle"],
+      deprioritized: ["quads", "biceps"],
       equipment: ["dumbbell"],
       avoid: ["overhead press"],
     })
@@ -185,6 +189,7 @@ test("messy pages go to the model; hints read numbers directly and the rest from
   assert.equal(hints.minutes, 60);
   assert.equal(hints.experience, undefined);
   assert.deepEqual(hints.priorities, ["biceps", "triceps"]);
+  assert.deepEqual(hints.deprioritized, ["quads"]);
   assert.deepEqual(hints.equipment, ["dumbbell", "bodyweight"]);
   assert.deepEqual(hints.avoid, ["overhead press"]);
 

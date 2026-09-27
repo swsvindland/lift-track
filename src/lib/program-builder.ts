@@ -7,19 +7,29 @@ import { rirPlan } from "./progression";
    a draft the user can edit comes out. */
 
 export type Experience = "beginner" | "intermediate" | "advanced";
+export const sessionMinutes = [30, 45, 60, 75, 90] as const;
+export type SessionMinutes = (typeof sessionMinutes)[number];
 export type BuilderInput = {
   days: number;
-  minutes: 45 | 60 | 75 | 90;
+  minutes: SessionMinutes;
   experience: Experience;
   weeks: number;
+  /** Muscles to bring up: always trained, a set more, a higher starting cap. */
   priorities: Muscle[];
+  /** Muscles to bring down: one movement a day at most, fewer sets, a low cap that never grows. */
+  deprioritized: Muscle[];
   equipment: readonly Equipment[];
   settings: ExerciseSetting[];
 };
 
 export type DraftSlot = { exerciseId: string; sets: number; reps: [number, number] };
 export type DraftDay = { name: string; slots: DraftSlot[] };
-export type ProgramDraft = { name: string; rir: number[]; days: DraftDay[] };
+export type ProgramDraft = {
+  name: string;
+  rir: number[];
+  days: DraftDay[];
+  deprioritized?: Muscle[];
+};
 
 type Spec = { pattern: Pattern; muscle: Muscle };
 const s = (pattern: Pattern, muscle: Muscle): Spec => ({ pattern, muscle });
@@ -220,7 +230,7 @@ const preferred: Partial<Record<Pattern, string[]>> = {
   shrug: ["db-shrug", "barbell-shrug", "machine-shrug", "cable-shrug"],
 };
 
-const slotsFor = { 45: 5, 60: 6, 75: 7, 90: 8 } as const;
+const slotsFor: Record<SessionMinutes, number> = { 30: 4, 45: 5, 60: 6, 75: 7, 90: 8 };
 
 /**
  * Picks an exercise for a movement: the preferred list first, then anything in the library with
@@ -263,10 +273,15 @@ export function buildProgram(input: BuilderInput, exercises: Exercise[]): Progra
   const count = slotsFor[input.minutes] + (input.experience === "advanced" ? 1 : 0);
   const baseSets = input.experience === "beginner" ? 2 : 3;
   const priority = new Set(input.priorities);
+  const lowered = new Set(input.deprioritized.filter((m) => !priority.has(m)));
 
   const days = split.days.map((template, index) => {
     const taken = new Set<string>();
-    const specs = dayTemplates[template];
+    // A muscle brought down keeps only its first movement of the day; others take the room.
+    const specs = dayTemplates[template].filter(
+      (spec, i, list) =>
+        !lowered.has(spec.muscle) || list.findIndex((x) => x.muscle === spec.muscle) === i
+    );
     // Short sessions take movements from the top, but always keep a priority muscle's,
     // dropping the least important other movement instead. Order stays as listed.
     const chosen = specs.filter((spec, i) => i < count || priority.has(spec.muscle));
@@ -287,7 +302,8 @@ export function buildProgram(input: BuilderInput, exercises: Exercise[]): Progra
       const sets = Math.min(
         4,
         (slots.length < 2 ? baseSets : Math.max(2, baseSets - 1)) +
-          (priority.has(spec.muscle) ? 1 : 0)
+          (priority.has(spec.muscle) ? 1 : 0) -
+          (lowered.has(spec.muscle) ? 1 : 0)
       );
       slots.push({ exerciseId: exercise.id, sets, reps: [exercise.reps[0], exercise.reps[1]] });
     }
@@ -298,8 +314,8 @@ export function buildProgram(input: BuilderInput, exercises: Exercise[]): Progra
     return { name: `${template}${letter}`, slots };
   });
 
-  capStartingVolume(days, input, exercises);
-  return { name: split.name, rir: rirPlan(input.weeks), days };
+  capStartingVolume(days, input, lowered, exercises);
+  return { name: split.name, rir: rirPlan(input.weeks), days, deprioritized: [...lowered] };
 }
 
 /** Weekly primary-muscle sets a program starts at: low, so there's room to grow. */
@@ -309,11 +325,19 @@ export const startingVolume: Record<Experience, number> = {
   advanced: 12,
 };
 
+/** Weekly primary-muscle sets for a muscle brought down: enough to keep most of it. */
+export const loweredVolume = 4;
+
 /**
  * Trims week-one sets where a muscle's primary sets across the week exceed the starting volume,
  * taking from the slot with the most sets, later in the day first, never below one set.
  */
-function capStartingVolume(days: DraftDay[], input: BuilderInput, exercises: Exercise[]) {
+function capStartingVolume(
+  days: DraftDay[],
+  input: BuilderInput,
+  lowered: Set<Muscle>,
+  exercises: Exercise[]
+) {
   const byId = new Map(exercises.map((e) => [e.id, e]));
   const slots = days.flatMap((d) => d.slots.map((slot, index) => ({ slot, index })));
   const muscles = new Set(
@@ -324,7 +348,9 @@ function capStartingVolume(days: DraftDay[], input: BuilderInput, exercises: Exe
     )
   );
   for (const muscle of muscles) {
-    const cap = startingVolume[input.experience] + (input.priorities.includes(muscle) ? 2 : 0);
+    const cap = lowered.has(muscle)
+      ? loweredVolume
+      : startingVolume[input.experience] + (input.priorities.includes(muscle) ? 2 : 0);
     const training = slots.filter(({ slot }) => byId.get(slot.exerciseId)?.muscles[muscle] === 1);
     let total = training.reduce((sum, { slot }) => sum + slot.sets, 0);
     while (total > cap) {

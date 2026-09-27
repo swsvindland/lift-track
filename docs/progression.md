@@ -18,16 +18,18 @@ Sessions run in order: week 1 day 1, week 1 day 2, and so on. A missed day is no
 
 ## Building one
 
-You answer five questions: days a week (2–6), minutes a session, training age, weeks before the deload, and up to three muscles to bring up. The split follows the days:
+You answer four questions: days a week (2–6), minutes a session, training age and weeks before the deload. Two pages then list every muscle: pick up to three to bring up, then any of the rest to bring down. The split follows the days:
 
 - 2–3 days: full body A/B(/C)
 - 4 days: upper/lower ×2
 - 5 days: upper, lower, push, pull, legs
 - 6 days: push/pull/legs ×2
 
-Each day lists movements in order of importance. A 45-minute session takes the first 5, 60 minutes 6, 75 minutes 7 and 90 minutes 8. Advanced lifters get one more.
+Each day lists movements in order of importance. A 30-minute session takes the first 4, 45 minutes 5, 60 minutes 6, 75 minutes 7 and 90 minutes 8. Advanced lifters get one more.
 
-A priority muscle's movement is always kept and gets one extra set. The least important other movement makes room for it.
+A muscle brought up always keeps its movement and gets one extra set. The least important other movement makes room for it.
+
+A muscle brought down keeps only its first movement of each day, with one set fewer. The next movements on the list fill the room, so sessions stay the same length.
 
 Exercises are picked in this order:
 
@@ -40,7 +42,7 @@ Only equipment your gym has is used, and exercises marked Avoid are skipped. A m
 Week one starts low:
 
 - Early compound slots get 3 sets and later ones 2, or 2 each for lifters under a year.
-- No muscle starts above 8, 10 or 12 primary sets a week (by training age), or 2 more for a priority muscle. Sets are trimmed from the fullest, latest slot until it fits.
+- No muscle starts above 8, 10 or 12 primary sets a week (by training age). A muscle brought up gets 2 more, and a muscle brought down starts at 4 at most. Sets are trimmed from the fullest, latest slot until it fits.
 
 Everything can be edited before starting, and the running program can be edited later. Surviving slots keep their history.
 
@@ -82,6 +84,8 @@ Week one uses the plan. Each later week, a day's sets start from last week's sam
 
 Feedback is one optional tap per muscle on the session summary.
 
+A muscle brought down never gains sets. It can still lose them.
+
 Missing reps overrides positive feedback: good feedback holds instead of adding when most sets fell 2 or more reps short.
 
 A set is added to the slot with the fewest sets for that muscle, and taken from the one with the most. Limits: a slot has 1–6 sets, and a muscle gets at most 10 primary sets in one session. "Hurt" also deserves a swap; the exercise menu offers one.
@@ -110,4 +114,5 @@ Tests (`tests/programs.test.cjs`) cover:
 - first time, deload, bodyweight and assisted
 - a simulated lifter across a 5-week block
 - the builder across splits, equipment, session length, priorities, Avoid and starting volume
+- bringing a muscle up and another down, and the one brought down holding its sets
 - a program run through feedback, skips, week-2 sets and loads, the deload and editing

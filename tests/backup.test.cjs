@@ -53,6 +53,7 @@ function seed(ctx) {
       experience: "intermediate",
       weeks: 4,
       priorities: [],
+      deprioritized: [],
       equipment: types.equipment,
       settings: [],
     },

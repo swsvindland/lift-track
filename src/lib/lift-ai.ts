@@ -8,7 +8,7 @@ import {
   type Muscle,
   type Pattern,
 } from "./exercises/types";
-import type { Experience } from "./program-builder";
+import { sessionMinutes, type Experience, type SessionMinutes } from "./program-builder";
 import type { JsonSchema } from "./model-json";
 import { parseProgramText, type ParsedProgram } from "./program-text";
 import { toKg, type Units } from "./metrics";
@@ -249,10 +249,11 @@ export async function readProgram(
 
 export type BuilderHints = {
   days?: number;
-  minutes?: 45 | 60 | 75 | 90;
+  minutes?: SessionMinutes;
   experience?: Experience;
   weeks?: number;
   priorities: Muscle[];
+  deprioritized: Muscle[];
   equipment?: Equipment[];
   avoid: string[];
 };
@@ -274,6 +275,12 @@ const hintsSchema: JsonSchema = {
     },
     experience: { type: "string", enum: ["unknown", "beginner", "intermediate", "advanced"] },
     priorities: { type: "array", maxItems: 3, items: { type: "string", enum: [...muscles] } },
+    deprioritized: {
+      type: "array",
+      maxItems: 6,
+      description: "muscles to shrink or train less",
+      items: { type: "string", enum: [...muscles] },
+    },
     equipment: {
       type: "array",
       description: "equipment they have, empty if not said",
@@ -286,21 +293,21 @@ const hintsSchema: JsonSchema = {
       description: "exercises or movements to avoid",
     },
   },
-  required: ["days", "minutes", "experience", "priorities", "equipment", "avoid"],
+  required: ["days", "minutes", "experience", "priorities", "deprioritized", "equipment", "avoid"],
 };
 
 const snapMinutes = (m: number) =>
-  ([45, 60, 75, 90] as const).reduce((a, b) => (Math.abs(b - m) < Math.abs(a - m) ? b : a));
+  sessionMinutes.reduce((a: SessionMinutes, b) => (Math.abs(b - m) < Math.abs(a - m) ? b : a));
 
 /** Numbers are read directly; muscles, equipment and injuries need the model. */
 export async function readBuilderHints(text: string, generate?: Generate): Promise<BuilderHints> {
   const lower = text.toLowerCase();
-  const hints: BuilderHints = { priorities: [], avoid: [] };
+  const hints: BuilderHints = { priorities: [], deprioritized: [], avoid: [] };
   const days = /(\d)\s*(?:days?|x|times)\s*(?:a|per|\/)?\s*week/.exec(lower);
   if (days) hints.days = Math.min(6, Math.max(2, +days[1]));
   const minutes =
     /(\d{2,3})\s*(?:min|minutes)/.exec(lower) ??
-    (/(an?|one)\s*hour/.test(lower) ? ["", "60"] : null);
+    (/half an? hour/.test(lower) ? ["", "30"] : /(an?|one)\s*hour/.test(lower) ? ["", "60"] : null);
   if (minutes) hints.minutes = snapMinutes(+minutes[1]);
   const weeks = /(\d)\s*weeks?/.exec(lower);
   if (weeks) hints.weeks = Math.min(6, Math.max(4, +weeks[1]));
@@ -308,7 +315,7 @@ export async function readBuilderHints(text: string, generate?: Generate): Promi
   if (!generate) return hints;
   const reply = (await tryGenerate(generate, {
     instructions:
-      "You read what someone wants from a weightlifting program. Fill only what they said; use 0, 'unknown' or empty lists otherwise. Priorities are muscles they want to grow; 'delts' or 'shoulders' means sideDelts, 'arms' means biceps and triceps, 'back' means lats and upperBack. Equipment lists only what they say they have. Avoid lists exercises or movements that hurt or that they can't do.",
+      "You read what someone wants from a weightlifting program. Fill only what they said; use 0, 'unknown' or empty lists otherwise. Priorities are muscles they want to grow; deprioritized are muscles they want to shrink or train less. 'delts' or 'shoulders' means sideDelts, 'arms' means biceps and triceps, 'back' means lats and upperBack, 'legs' means quads, hamstrings and calves. Equipment lists only what they say they have. Avoid lists exercises or movements that hurt or that they can't do.",
     prompt: `They said:\n${clampText(text, 1000)}`,
     schema: hintsSchema,
     maxTokens: 400,
@@ -325,6 +332,9 @@ export async function readBuilderHints(text: string, generate?: Generate): Promi
   const known = <T extends string>(list: readonly T[], v: unknown) =>
     (Array.isArray(v) ? v : []).filter((x): x is T => list.includes(x as T));
   hints.priorities = known(muscles, reply?.priorities).slice(0, 3);
+  hints.deprioritized = known(muscles, reply?.deprioritized).filter(
+    (m) => !hints.priorities.includes(m)
+  );
   const kit = known(equipment, reply?.equipment);
   // Bodyweight is always available; a list of what they have narrows the rest.
   if (kit.length) hints.equipment = [...new Set([...kit, "bodyweight" as const])];

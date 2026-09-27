@@ -15,6 +15,13 @@
       "when": 1790456364139,
       "tag": "0001_programs",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1790518884449,
+      "tag": "0002_deprioritized",
+      "breakpoints": true
     }
   ]
 }
