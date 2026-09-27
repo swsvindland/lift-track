@@ -9,9 +9,9 @@ import type { Effort, WorkoutSet } from "@/db";
    It stands in for reps in reserve; blank means "as prescribed". */
 
 export const effortChoices: { value: Effort; label: string; hint: string; dot: string }[] = [
-  { value: "hard", label: "Hard", hint: "0–1 reps left", dot: "bg-danger" },
-  { value: "good", label: "Good", hint: "1–3 left", dot: "bg-warning" },
-  { value: "easy", label: "Easy", hint: "4+ left", dot: "bg-success" },
+  { value: "hard", label: "Hard", hint: "0–1 reps left", dot: "bg-effort-hard" },
+  { value: "good", label: "Good", hint: "1–3 left", dot: "bg-effort-good" },
+  { value: "easy", label: "Easy", hint: "4+ left", dot: "bg-effort-easy" },
 ];
 
 /** A set's effort: the rating, or a typed reps-in-reserve read as a color. */

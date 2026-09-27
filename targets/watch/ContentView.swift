@@ -9,6 +9,14 @@ struct ContentView: View {
       Group {
         if let workout = phone.workout {
           WorkoutView(workout: workout, unit: phone.state?.unit ?? "kg")
+        } else if phone.finishing {
+          VStack(spacing: 8) {
+            Image(systemName: "checkmark.circle.fill")
+              .font(.title)
+              .foregroundStyle(.green)
+            Text("Workout saved")
+              .font(.headline)
+          }
         } else if phone.starting {
           VStack(spacing: 8) {
             ProgressView()
@@ -23,7 +31,7 @@ struct ContentView: View {
       }
     }
     // The session follows the phone: on while a workout is open, off once it's finished.
-    .onChange(of: phone.state?.workout?.id, initial: true) { _, id in
+    .onChange(of: phone.finishing ? nil : phone.state?.workout?.id, initial: true) { _, id in
       guard phone.state != nil else { return }
       if id != nil {
         Task { await session.start() }
@@ -73,10 +81,10 @@ struct StartView: View {
         Phone.shared.start()
       } label: {
         Label("Start", systemImage: "play.fill")
+          .font(.headline)
           .frame(maxWidth: .infinity)
       }
-      .buttonStyle(.borderedProminent)
-      .tint(.accentColor)
+      .buttonStyle(WideButtonStyle(tint: .accentColor))
     }
     .frame(maxWidth: .infinity, alignment: .leading)
   }

@@ -37,9 +37,11 @@ final class Phone: NSObject, WCSessionDelegate {
 
   /// The open workout with this Watch's unconfirmed taps applied.
   var workout: Workout? {
-    guard var workout = state?.workout else { return nil }
+    guard var workout = state?.workout, !finishing else { return nil }
     for command in pending {
-      guard let setId = command.setId, let at = workout.find(setId) else { continue }
+      guard command.type == .log || command.type == .rate, let setId = command.setId,
+        let at = workout.find(setId)
+      else { continue }
       let (e, s) = at
       switch command.type {
       case .log where !workout.exercises[e].sets[s].done:
@@ -105,6 +107,17 @@ final class Phone: NSObject, WCSessionDelegate {
     send(Command(type: .rate, setId: setId, effort: effort))
   }
 
+  /// Ends the workout on the phone; the Watch shows it gone at once.
+  func finish() {
+    guard let id = state?.workout?.id else { return }
+    localRest = nil
+    send(Command(type: .finish, workoutId: id))
+  }
+
+  var finishing: Bool {
+    pending.contains { $0.type == .finish && $0.workoutId == state?.workout?.id }
+  }
+
   func skipRest() {
     guard let rest else { return }
     skipped = rest.endsAt
@@ -154,6 +167,7 @@ final class Phone: NSObject, WCSessionDelegate {
     pending.removeAll { command in
       next.acked.contains(command.id)
         || (command.type == .start ? next.workout != nil : next.workout == nil)
+        || (command.type == .finish && next.workout?.id != command.workoutId)
     }
     if pending.count != before { savePending() }
     if skipped != nil, next.workout?.rest?.endsAt != skipped { skipped = nil }

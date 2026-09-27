@@ -15,6 +15,7 @@
       },
       "supportsTablet": false,
       "bundleIdentifier": "dev.svindland.vector.lift",
+      "appleTeamId": "9HAG9PT8LJ",
       "infoPlist": {
         "CFBundleDisplayName": "Lift",
         "ITSAppUsesNonExemptEncryption": false

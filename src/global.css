@@ -31,6 +31,10 @@
   --text-2xl: 22px;
   --text-3xl: 28px;
   --text-4xl: 36px;
+  /* Effort colors, the same on the phone and the Watch (targets/watch/Model.swift). */
+  --color-effort-hard: #ff453a;
+  --color-effort-good: #ff9f0a;
+  --color-effort-easy: #30d158;
 }
 
 @theme inline {

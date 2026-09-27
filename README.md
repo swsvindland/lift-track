@@ -67,7 +67,7 @@ Everything stays on the phone: no account, no server, no analytics and no networ
   - Sets and loads stay in the app. No energy is estimated, so a watch recording the same session isn't double counted.
   - Only permissions you granted are used.
 
-- **Apple Watch:** start the next session or follow one started on the phone. Log the current set in one tap, with load and reps on the crown. Rate it Hard / Good / Easy during rest, and get a tap on the wrist when rest is over. See [Apple Watch](docs/watch.md).
+- **Apple Watch:** start the next session or follow one started on the phone. Log the current set in one tap, with load and reps on the crown. Rate it Hard / Good / Easy during rest, get a tap on the wrist when rest is over, and finish from the wrist; the post-session questions wait on Today until you answer or skip them. See [Apple Watch](docs/watch.md).
 
 A home-screen widget is still to come.
 

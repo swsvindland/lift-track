@@ -164,6 +164,42 @@ test("Start on the Watch repeats the last workout or begins the program's next s
   const state = watch.watchState(context, null, []);
   assert.equal(state.start, null);
   assert.equal(state.workout.exercises.length, detail.days[0].slots.length);
+
+  // Finish from the Watch: the clock stops and the questions wait on the phone.
+  const opening = state.workout.exercises[0];
+  for (const s of opening.sets)
+    watch.applyWatchCommand(
+      {
+        id: `log-${s.id}`,
+        type: "log",
+        setId: s.id,
+        weightKg: s.weightKg ?? 20,
+        reps: s.reps ?? 10,
+      },
+      context
+    );
+  assert.deepEqual(
+    watch.applyWatchCommand({ id: "3", type: "finish", workoutId: session.id + 1 }, context),
+    {},
+    "only the workout the Watch showed"
+  );
+  assert.deepEqual(
+    watch.applyWatchCommand({ id: "4", type: "finish", workoutId: session.id }, context),
+    { finished: session.id, stopRest: true }
+  );
+  assert.equal(workouts.activeWorkout(), undefined);
+  assert.deepEqual(
+    watch.applyWatchCommand({ id: "4", type: "finish", workoutId: session.id }, context),
+    {}
+  );
+  assert.equal(programs.awaitingFeedback(byId).id, session.id);
+  const [muscle] = programs.trainedMuscles(programs.awaitingFeedback(byId), byId);
+  programs.saveFeedback(session.id, muscle, "good");
+  assert.equal(programs.awaitingFeedback(byId), undefined, "answered");
+  programs.saveFeedback(session.id, muscle, null);
+  assert.equal(programs.awaitingFeedback(byId).id, session.id);
+  programs.skipFeedback(session.id);
+  assert.equal(programs.awaitingFeedback(byId), undefined, "skipped");
 });
 
 test("the crown steps through loads the gym can make, around the target", () => {
@@ -188,6 +224,7 @@ test("the crown steps through loads the gym can make, around the target", () => 
 test("commands from the Watch are validated", () => {
   const { watch } = setup();
   assert.equal(watch.parseWatchCommand("nope"), undefined);
+  assert.equal(watch.parseWatchCommand('{"id":"1","type":"finish"}'), undefined);
   assert.equal(
     watch.parseWatchCommand('{"id":"1","type":"log","setId":1,"weightKg":-5,"reps":8}'),
     undefined

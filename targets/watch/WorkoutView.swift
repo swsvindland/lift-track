@@ -129,12 +129,12 @@ struct SetView: View {
           .font(.headline)
           .frame(maxWidth: .infinity)
       }
-      .buttonStyle(.borderedProminent)
-      .tint(.green)
+      .buttonStyle(WideButtonStyle(tint: .green))
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     // Reps change most from set to set, so the crown starts on them.
-    .defaultFocus($focus, .reps)
+    // Set after the first layout: an initial focus value is overridden by the first focusable tile.
+    .onAppear { DispatchQueue.main.async { focus = .reps } }
   }
 }
 
@@ -188,8 +188,12 @@ struct RestView: View {
           }
         }
       }
-      Button("Skip rest") { Phone.shared.skipRest() }
-        .buttonStyle(.bordered)
+      Button {
+        Phone.shared.skipRest()
+      } label: {
+        Text("Skip rest").frame(maxWidth: .infinity)
+      }
+      .buttonStyle(WideButtonStyle(tint: nil))
     }
   }
 }
@@ -198,14 +202,6 @@ struct EffortButton: View {
   let effort: Effort
   let selected: Bool
   let action: () -> Void
-
-  private var color: Color {
-    switch effort {
-    case .hard: return .red
-    case .good: return .orange
-    case .easy: return .green
-    }
-  }
 
   private var label: String {
     switch effort {
@@ -227,7 +223,7 @@ struct EffortButton: View {
     Button(action: action) {
       VStack(spacing: 2) {
         Circle()
-          .fill(color)
+          .fill(effort.color)
           .frame(width: 22, height: 22)
           .overlay {
             if selected {
@@ -240,7 +236,7 @@ struct EffortButton: View {
       .padding(.vertical, 4)
       .background(
         RoundedRectangle(cornerRadius: 10)
-          .fill(selected ? color.opacity(0.3) : Color.clear)
+          .fill(selected ? effort.color.opacity(0.3) : Color.clear)
       )
     }
     .buttonStyle(.plain)
@@ -249,17 +245,44 @@ struct EffortButton: View {
   }
 }
 
+/// Every set is logged: finish here to stop the clock. The questions wait on the phone.
 struct DoneView: View {
   var body: some View {
-    VStack(spacing: 8) {
+    VStack(spacing: 6) {
       Image(systemName: "checkmark.circle.fill")
-        .font(.largeTitle)
+        .font(.title)
         .foregroundStyle(.green)
       Text("All sets logged")
         .font(.headline)
-      Text("Finish on your iPhone.")
+      Text("How it went waits on your iPhone.")
         .font(.footnote)
         .foregroundStyle(.secondary)
+        .multilineTextAlignment(.center)
+      Button {
+        Phone.shared.finish()
+      } label: {
+        Label("Finish", systemImage: "flag.checkered")
+          .font(.headline)
+          .frame(maxWidth: .infinity)
+      }
+      .buttonStyle(WideButtonStyle(tint: .accentColor))
     }
+  }
+}
+
+/// A capsule as wide as the screen. Watch bordered buttons keep an inset, so they sit narrower
+/// than the tiles above them.
+struct WideButtonStyle: ButtonStyle {
+  /// Nil is the quiet gray button.
+  let tint: Color?
+
+  func makeBody(configuration: Configuration) -> some View {
+    configuration.label
+      .font(.headline)
+      .foregroundStyle(tint == nil ? Color.white : Color.black)
+      .frame(maxWidth: .infinity, minHeight: 48)
+      .background(Capsule().fill(tint ?? Color.white.opacity(0.18)))
+      .opacity(configuration.isPressed ? 0.7 : 1)
+      .contentShape(Capsule())
   }
 }

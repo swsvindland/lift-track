@@ -15,6 +15,7 @@ import type { Rest } from "./rest-timer";
 import {
   activeWorkout,
   completeSet,
+  finishWorkout,
   finishedWorkouts,
   gymById,
   rateSet,
@@ -188,6 +189,7 @@ const command = z.discriminatedUnion("type", [
     effort: z.enum(efforts).nullable(),
   }),
   z.object({ id: z.string(), type: z.literal("skipRest") }),
+  z.object({ id: z.string(), type: z.literal("finish"), workoutId: z.number().int() }),
 ]);
 export type WatchCommand = z.infer<typeof command>;
 
@@ -204,6 +206,8 @@ export type WatchEffect = {
   rest?: { seconds: number; label: string; setId: number };
   stopRest?: boolean;
   started?: boolean;
+  /** The workout finished from the Watch; null when it was empty and discarded. */
+  finished?: number | null;
 };
 
 /**
@@ -224,6 +228,11 @@ export function applyWatchCommand(cmd: WatchCommand, ctx: WatchContext): WatchEf
     return { started: true };
   }
   if (cmd.type === "skipRest") return { stopRest: true };
+  if (cmd.type === "finish") {
+    // Only the workout the Watch was showing; a retry after it finished does nothing.
+    if (activeWorkout()?.id !== cmd.workoutId) return {};
+    return { finished: finishWorkout(cmd.workoutId), stopRest: true };
+  }
 
   const open = activeWorkout();
   const detail = open ? workoutDetail(open.id) : undefined;

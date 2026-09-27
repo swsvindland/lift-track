@@ -6,6 +6,7 @@ import {
   mesoSlots,
   mesocycles,
   muscleFeedback,
+  preferences,
   sets,
   workoutExercises,
   workouts,
@@ -686,6 +687,36 @@ export function trainedMuscles(detail: WorkoutDetail, byId: (id: string) => Exer
     for (const m of primary(byId(block.exerciseId))) if (!seen.includes(m)) seen.push(m);
   }
   return seen;
+}
+
+const SKIPPED = "feedbackSkipped";
+
+/**
+ * The last program session whose questions are still open: nothing answered, not skipped and
+ * nothing started since. They can wait, e.g. after finishing on the Watch or when busy.
+ */
+export function awaitingFeedback(byId: (id: string) => Exercise): WorkoutDetail | undefined {
+  if (activeWorkout()) return undefined;
+  const last = db
+    .select()
+    .from(workouts)
+    .where(isNotNull(workouts.endedAt))
+    .orderBy(desc(workouts.startedAt))
+    .limit(1)
+    .get();
+  if (!last || last.mesoId === null || last.deload || feedbackFor(last.id).length) return undefined;
+  const skipped = db.select().from(preferences).where(eq(preferences.key, SKIPPED)).get()?.value;
+  if (skipped === String(last.id)) return undefined;
+  const detail = workoutDetail(last.id);
+  return detail && trainedMuscles(detail, byId).length ? detail : undefined;
+}
+
+export function skipFeedback(workoutId: number) {
+  const value = String(workoutId);
+  db.insert(preferences)
+    .values({ key: SKIPPED, value })
+    .onConflictDoUpdate({ target: preferences.key, set: { value } })
+    .run();
 }
 
 /** Makes a swap permanent for the rest of the program. */

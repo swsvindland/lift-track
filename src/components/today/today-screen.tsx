@@ -15,7 +15,15 @@ import { muscleLabels } from "@/lib/exercises";
 import type { Muscle } from "@/lib/exercises/types";
 import { useExercises } from "@/lib/exercise-store";
 import { dayLabel, duration, rirText, weightText } from "@/lib/format";
-import { activeMeso, isDeloadWeek, nextSession, programDetail, weekRir } from "@/lib/programs";
+import {
+  activeMeso,
+  awaitingFeedback,
+  isDeloadWeek,
+  nextSession,
+  programDetail,
+  skipFeedback,
+  weekRir,
+} from "@/lib/programs";
 import { useStartSession } from "@/components/plan/use-start-session";
 import { TravelBanner } from "@/components/gyms/travel";
 import { useStore } from "@/lib/store";
@@ -62,8 +70,8 @@ export function TodayScreen() {
     const meso = activeMeso();
     const program = meso ? programDetail(meso.id) : undefined;
     const next = program ? nextSession(program) : undefined;
-    return { open, openDetail, week, repeat, program, next };
-  }, []);
+    return { open, openDetail, week, repeat, program, next, awaiting: awaitingFeedback(byId) };
+  }, [byId]);
   useMinuteClock(!!data.open);
 
   const weekly = setsPerMuscle(data.week, byId);
@@ -91,6 +99,33 @@ export function TodayScreen() {
       })}
     >
       {!data.open && <TravelBanner />}
+      {data.awaiting && (
+        <SystemPanel className="gap-3">
+          <SystemLabel>How did it go?</SystemLabel>
+          <Text className="text-lg font-semibold">
+            {data.awaiting.name || "Workout"} · {dayLabel(data.awaiting.startedAt, locale)}
+          </Text>
+          <View className="flex-row gap-2">
+            <SystemButton
+              className="flex-1"
+              onPress={() =>
+                router.push({
+                  pathname: "/session/[id]",
+                  params: { id: String(data.awaiting!.id), finished: "1" },
+                })
+              }
+            >
+              Answer
+            </SystemButton>
+            <SystemButton
+              variant="ghost"
+              onPress={() => write(() => skipFeedback(data.awaiting!.id))}
+            >
+              Skip
+            </SystemButton>
+          </View>
+        </SystemPanel>
+      )}
       {data.open ? (
         <SystemPanel className="gap-3 bg-accent-soft">
           <SystemLabel className="text-accent-soft-foreground">Workout in progress</SystemLabel>

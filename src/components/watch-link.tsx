@@ -1,6 +1,8 @@
 import { useEffect, useRef } from "react";
+import { router, usePathname } from "expo-router";
 import { write, useRevision } from "@/lib/data";
 import { useExercises } from "@/lib/exercise-store";
+import { syncHealthSoon } from "@/lib/health-schedule";
 import { defaultRest, startRest, stopRest, useRestState } from "@/lib/rest-timer";
 import { useStore } from "@/lib/store";
 import { applyWatchCommand, parseWatchCommand, watchState, type WatchContext } from "@/lib/watch";
@@ -29,13 +31,14 @@ function Link() {
     settings,
     restFor: (exercise) => settingFor(exercise.id)?.restSeconds ?? defaultRest(exercise),
   };
-  const latest = useRef(ctx);
+  const pathname = usePathname();
+  const latest = useRef({ ctx, pathname });
   useEffect(() => {
-    latest.current = ctx;
+    latest.current = { ctx, pathname };
   });
 
   useEffect(() => {
-    const state = watchState(latest.current, rest, acked.current);
+    const state = watchState(latest.current.ctx, rest, acked.current);
     sendWatchState(state);
     const id = state.workout?.id ?? null;
     if (shown.current === null && id !== null && !startedByWatch.current) startWatchApp();
@@ -50,10 +53,19 @@ function Link() {
         if (!cmd) return;
         // Acked before the write, whose revision bump sends it back even when nothing changed.
         acked.current = [...acked.current, cmd.id].slice(-20);
-        const effect = write(() => applyWatchCommand(cmd, latest.current));
+        const effect = write(() => applyWatchCommand(cmd, latest.current.ctx));
         if (effect.started) startedByWatch.current = true;
         if (effect.rest) startRest(effect.rest.seconds, effect.rest.label, effect.rest.setId);
         else if (effect.stopRest) stopRest();
+        if (effect.finished) {
+          void syncHealthSoon();
+          // A phone left on the workout shows how it went, as its own Finish does.
+          if (latest.current.pathname === "/workout")
+            router.replace({
+              pathname: "/session/[id]",
+              params: { id: String(effect.finished), finished: "1" },
+            });
+        }
       }),
     []
   );

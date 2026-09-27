@@ -1,4 +1,5 @@
 import Foundation
+import SwiftUI
 
 /* What the phone sends (src/lib/watch.ts, WatchState) and what the Watch sends back. The phone
    is the source of truth; the Watch only adds its own taps on top until the phone acks them. */
@@ -6,6 +7,15 @@ import Foundation
 enum Effort: String, Codable, CaseIterable, Identifiable {
   case hard, good, easy
   var id: String { rawValue }
+
+  /// The same colors as the phone's effort tokens (--color-effort-* in src/global.css).
+  var color: Color {
+    switch self {
+    case .hard: return Color(red: 1, green: 0x45 / 255, blue: 0x3a / 255)
+    case .good: return Color(red: 1, green: 0x9f / 255, blue: 0x0a / 255)
+    case .easy: return Color(red: 0x30 / 255, green: 0xd1 / 255, blue: 0x58 / 255)
+    }
+  }
 }
 
 enum SetKind: String, Codable {
@@ -81,7 +91,7 @@ struct WatchState: Codable {
 }
 
 struct Command: Codable, Equatable {
-  enum Kind: String, Codable { case start, log, rate, skipRest }
+  enum Kind: String, Codable { case start, log, rate, skipRest, finish }
 
   var id = UUID().uuidString
   let type: Kind
@@ -89,6 +99,7 @@ struct Command: Codable, Equatable {
   var weightKg: Double? = nil
   var reps: Int? = nil
   var effort: Effort? = nil
+  var workoutId: Int? = nil
 }
 
 /// A load in the display unit without trailing zeros: 80, 102.5, 11.25; no added load is "BW".
