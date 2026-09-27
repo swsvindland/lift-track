@@ -127,9 +127,13 @@ export function TodayScreen() {
           </SystemButton>
         </SystemPanel>
       ) : (
-        <SystemButton icon="add" onPress={() => begin()}>
-          Start workout
-        </SystemButton>
+        <SystemPanel className="gap-3 bg-accent-soft">
+          <SystemLabel className="text-accent-soft-foreground">No plan yet</SystemLabel>
+          <Text className="text-xl font-semibold">Set up your training</Text>
+          <SystemButton icon="construct-outline" onPress={() => router.navigate("/(tabs)/plan")}>
+            Build or import a plan
+          </SystemButton>
+        </SystemPanel>
       )}
 
       {!data.open && !data.program && data.repeat.length > 0 && (
