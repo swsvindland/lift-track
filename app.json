@@ -15,6 +15,7 @@
       },
       "supportsTablet": false,
       "bundleIdentifier": "dev.svindland.vector.lift",
+      "appleTeamId": "9HAG9PT8LJ",
       "infoPlist": {
         "CFBundleDisplayName": "Lift",
         "ITSAppUsesNonExemptEncryption": false
@@ -93,7 +94,8 @@
       "expo-background-task",
       "expo-live-activity",
       "expo-quick-actions",
-      "expo-sharing"
+      "expo-sharing",
+      "@bacons/apple-targets"
     ],
     "experiments": {
       "typedRoutes": true,

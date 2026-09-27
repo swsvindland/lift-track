@@ -100,7 +100,7 @@ This fork is from Body, which is older than Macros. Port these from `../macro-tr
 | 3. Autoregulation + Progress | Muscle feedback, weekly volume adjustment, analytics, PRs                                                                                                             | A simulated 5-week meso stays within caps; early-deload logic triggers correctly |
 | 4. Native polish             | Live Activity rest timer, Health workouts, quick actions (Start next workout), widget                                                                                 | Device QA on iPhone and Android                                                  |
 | 5. On-device AI              | Say/type a workout, program import, constraint parsing                                                                                                                | Faster than manual on a timed test set, with no network use                      |
-| Later                        | Apple Watch / Wear OS logging, exercise media, cardio, Vector Macros energy sharing via Health                                                                        | —                                                                                |
+| Later                        | Wear OS logging, exercise media, cardio, Vector Macros energy sharing via Health                                                                                      | —                                                                                |
 
 ## Status (September 26, 2026)
 
@@ -118,6 +118,8 @@ Stages 0–4 are built on `lift/foundation`:
   The home-screen widget is deferred.
 
 The Progress tab replaced a History tab; history opens from Progress.
+
+Apple Watch logging is built on `lift/apple-watch` ([docs/watch.md](watch.md)): start or follow a workout, one-tap sets with crown-adjusted loads and reps, effort colors during rest, and an unsaved Watch workout session that keeps the app on the wrist.
 
 Encrypted backup, restore with recovery, CSV export and erase are also built ([docs/backups.md](backups.md)). Stage 5 on-device AI is built as well ([docs/ai.md](ai.md)); the model path still needs a real iPhone and Android phone.
 

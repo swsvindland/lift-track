@@ -67,6 +67,8 @@ Everything stays on the phone: no account, no server, no analytics and no networ
   - Sets and loads stay in the app. No energy is estimated, so a watch recording the same session isn't double counted.
   - Only permissions you granted are used.
 
+- **Apple Watch:** start the next session or follow one started on the phone. Log the current set in one tap, with load and reps on the crown. Rate it Hard / Good / Easy during rest, get a tap on the wrist when rest is over, and finish from the wrist; the post-session questions wait on Today until you answer or skip them. See [Apple Watch](docs/watch.md).
+
 A home-screen widget is still to come.
 
 ## Run
@@ -107,6 +109,7 @@ Tests run real SQLite through the production Drizzle driver. They cover:
 - weekly volume buckets, strength series (bodyweight included), records
 - progression, the program builder and a program run week by week (see [programs and progression](docs/progression.md))
 - supersets, reorder and swap
+- Watch sync: the state sent to the Watch, and logging, rating and starting from it
 - weekly volume
 - gym presets, left-out and added exercises, stand-ins, and a trip that adapts sessions and leaves home loads alone
 - health sync, including workout export, rewrite on edit and removal

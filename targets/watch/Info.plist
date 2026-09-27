@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+  <dict>
+    <key>WKApplication</key>
+    <true/>
+    <key>WKBackgroundModes</key>
+    <array>
+      <string>workout-processing</string>
+    </array>
+    <key>NSHealthShareUsageDescription</key>
+    <string>Show your heart rate on your wrist while you lift.</string>
+    <key>NSHealthUpdateUsageDescription</key>
+    <string>Keep Lift on your wrist while you lift. Your iPhone saves the workout to Health, so it isn't counted twice.</string>
+  </dict>
+</plist>

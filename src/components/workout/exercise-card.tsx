@@ -18,6 +18,7 @@ import {
   moveExercise,
   rateSet,
   removeExercise,
+  restLabel,
   toggleSuperset,
   updateSet,
   type ExerciseBlock,
@@ -97,7 +98,7 @@ export function ExerciseCard({
     if (restAfter && row.kind !== "warmup")
       startRest(
         restSeconds ?? defaultRest(exercise),
-        `Next: ${block.sets.some((s) => s.id !== row.id && !s.completedAt && s.kind !== "warmup") || !nextName ? exercise.name : nextName}`,
+        restLabel(block, row.id, exercise.name, nextName),
         row.id
       );
   };

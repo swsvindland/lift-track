@@ -43,3 +43,6 @@ yarn-error.*
 # Generated native folders
 /ios
 /android
+
+# Watch assets are generated from targets/watch/expo-target.config.js at prebuild
+targets/*/Assets.xcassets

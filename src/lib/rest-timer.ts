@@ -209,9 +209,12 @@ const subscribe = (listener: () => void) => {
   return () => void listeners.delete(listener);
 };
 
+/** The running rest, without ticking. */
+export const useRestState = () => useSyncExternalStore(subscribe, () => current);
+
 /** The running rest and seconds left, ticking each second while one runs. */
 export function useRest() {
-  const rest = useSyncExternalStore(subscribe, () => current);
+  const rest = useRestState();
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     if (!rest) return;
