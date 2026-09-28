@@ -24,7 +24,7 @@ import {
   skipFeedback,
   weekRir,
 } from "@/lib/programs";
-import { useStartSession } from "@/components/plan/use-start-session";
+import { previewSession, useStartSession } from "@/components/plan/use-start-session";
 import { TravelBanner } from "@/components/gyms/travel";
 import { useStore } from "@/lib/store";
 import { setsPerMuscle, weekStart } from "@/lib/volume";
@@ -151,12 +151,22 @@ export function TodayScreen() {
           <Text className="text-muted">
             {rirText(weekRir(data.program, data.next.week))} on every set
           </Text>
-          <SystemButton
-            icon="play"
-            onPress={() => startProgramSession(data.program!, data.next!.week, data.next!.dayId)}
-          >
-            Start
-          </SystemButton>
+          <View className="flex-row gap-2">
+            <SystemButton
+              variant="secondary"
+              icon="eye-outline"
+              onPress={() => previewSession(data.next!.week, data.next!.dayId)}
+            >
+              Preview
+            </SystemButton>
+            <SystemButton
+              icon="play"
+              className="flex-1"
+              onPress={() => startProgramSession(data.program!, data.next!.week, data.next!.dayId)}
+            >
+              Start
+            </SystemButton>
+          </View>
           <SystemButton variant="ghost" onPress={() => begin()}>
             Empty workout instead
           </SystemButton>

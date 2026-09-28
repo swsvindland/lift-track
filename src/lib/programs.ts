@@ -22,7 +22,14 @@ import {
 import { standIns, type Exercise } from "./exercises";
 import type { Muscle } from "./exercises/types";
 import type { ProgramDraft } from "./program-builder";
-import { DELOAD_RIR, METHOD, prescribe, type Advice, type AiApplied } from "./progression";
+import {
+  DELOAD_RIR,
+  METHOD,
+  prescribe,
+  type Advice,
+  type AiApplied,
+  type Prescription,
+} from "./progression";
 import { countsAsWork } from "./strength";
 import {
   activeWorkout,
@@ -303,11 +310,14 @@ function mesoWorkouts(mesoId: number) {
   return db.select().from(workouts).where(eq(workouts.mesoId, mesoId)).all();
 }
 
-/** Every week × day of the program with what happened to it. The first open slot is next. */
+/**
+ * Every week × day of the program with what happened to it. The first open slot is next, unless
+ * a session is in progress: that one is where you are, so nothing else is next.
+ */
 export function programProgress(detail: ProgramDetail): SessionCell[][] {
   const done = mesoWorkouts(detail.id);
   const skips = db.select().from(mesoSkips).where(eq(mesoSkips.mesoId, detail.id)).all();
-  let foundNext = false;
+  let foundNext = done.some((w) => !w.endedAt);
   return Array.from({ length: totalWeeks(detail) }, (_, week) =>
     detail.days.map((day) => {
       const workout = done.find((w) => w.mesoWeek === week && w.mesoDayId === day.id);
@@ -580,22 +590,32 @@ export type SessionContext = {
   settings?: ExerciseSetting[];
 };
 
+/** One exercise of a planned session: its slot, what's done in it, and every set's target. */
+export type PlannedExercise = {
+  slot: MesoSlot;
+  exercise: Exercise;
+  reps: [number, number];
+  advice: Advice;
+  sets: Prescription["sets"];
+};
+
+export type SessionPlan = {
+  day: MesoDay & { slots: MesoSlot[] };
+  deload: boolean;
+  rir: number;
+  exercises: PlannedExercise[];
+};
+
 /**
- * Starts a program session with every set prescribed. Returns the open workout instead when one
- * is already running with exercises in it; an empty one is discarded first. A slot whose exercise
- * the gym can't do gets a stand-in that keeps the slot, so its sets still count and progress.
+ * A program session with every set prescribed, without starting it: what {@link startSession}
+ * logs, and what a preview shows. A slot whose exercise the gym can't do gets a stand-in.
  */
-export function startSession(
+export function planSession(
   detail: ProgramDetail,
   week: number,
   dayId: number,
   context: SessionContext
-): number {
-  const open = activeWorkout();
-  if (open) {
-    if (workoutDetail(open.id)?.exercises.length) return open.id;
-    discardWorkout(open.id);
-  }
+): SessionPlan {
   const day = detail.days.find((d) => d.id === dayId);
   if (!day) throw new Error("Unknown program day");
   const deload = isDeloadWeek(detail, week);
@@ -614,6 +634,50 @@ export function startSession(
     context.gym && context.exercises
       ? standIns(planned, context.exercises, context.gym, context.settings)
       : planned;
+  const exercises = plan.map(({ slot, sets: count, ai, aiIds }, position) => {
+    const exercise = chosen[position];
+    // A stand-in trains in its own rep range, as a swap does.
+    const reps: [number, number] =
+      exercise.id === slot.exerciseId
+        ? [slot.repMin, slot.repMax]
+        : [exercise.reps[0], exercise.reps[1]];
+    const [last = [], ...history] = comparableSessions(exercise.id, { travel: context.travel });
+    const nudge = deload ? undefined : exerciseNudge(exercise.id);
+    const result = prescribe({
+      exercise,
+      gym: context.gym,
+      reps,
+      rir,
+      sets: count,
+      last,
+      history,
+      bodyWeightKg: context.bodyWeightKg,
+      deload,
+      nudge: nudge?.value,
+    });
+    const advice = withSetNudge(withNudge(result.advice, nudge), ai, aiIds, reasons);
+    return { slot, exercise, reps, advice, sets: result.sets };
+  });
+  return { day, deload, rir, exercises };
+}
+
+/**
+ * Starts a program session with every set prescribed. Returns the open workout instead when one
+ * is already running with exercises in it; an empty one is discarded first. A slot whose exercise
+ * the gym can't do gets a stand-in that keeps the slot, so its sets still count and progress.
+ */
+export function startSession(
+  detail: ProgramDetail,
+  week: number,
+  dayId: number,
+  context: SessionContext
+): number {
+  const open = activeWorkout();
+  if (open) {
+    if (workoutDetail(open.id)?.exercises.length) return open.id;
+    discardWorkout(open.id);
+  }
+  const { day, deload, exercises } = planSession(detail, week, dayId, context);
   return db.transaction((tx) => {
     const workoutId = tx
       .insert(workouts)
@@ -631,28 +695,7 @@ export function startSession(
       })
       .returning()
       .get().id;
-    plan.forEach(({ slot, sets: count, ai, aiIds }, position) => {
-      const exercise = chosen[position];
-      // A stand-in trains in its own rep range, as a swap does.
-      const reps: [number, number] =
-        exercise.id === slot.exerciseId
-          ? [slot.repMin, slot.repMax]
-          : [exercise.reps[0], exercise.reps[1]];
-      const [last = [], ...history] = comparableSessions(exercise.id, { travel: context.travel });
-      const nudge = deload ? undefined : exerciseNudge(exercise.id, workoutId);
-      const result = prescribe({
-        exercise,
-        gym: context.gym,
-        reps,
-        rir,
-        sets: count,
-        last,
-        history,
-        bodyWeightKg: context.bodyWeightKg,
-        deload,
-        nudge: nudge?.value,
-      });
-      const advice = withSetNudge(withNudge(result.advice, nudge), ai, aiIds, reasons);
+    exercises.forEach(({ slot, exercise, reps, advice, sets: planned }, position) => {
       const blockId = tx
         .insert(workoutExercises)
         .values({
@@ -666,7 +709,7 @@ export function startSession(
         })
         .returning()
         .get().id;
-      result.sets.forEach((set, index) =>
+      planned.forEach((set, index) =>
         tx
           .insert(sets)
           .values({

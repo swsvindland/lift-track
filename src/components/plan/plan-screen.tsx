@@ -23,24 +23,31 @@ import {
   otherPrograms,
   programDetail,
   programProgress,
-  skipSession,
   startProgram,
   startSaved,
   totalWeeks,
-  unskipSession,
   weekRir,
   type ProgramDetail,
   type SessionCell,
+  type SessionState,
 } from "@/lib/programs";
 import { useStore } from "@/lib/store";
 import { trainingGym } from "@/lib/workouts";
 import { TravelBanner, TravelSheet } from "@/components/gyms/travel";
 import { ProgramBuilderSheet } from "./program-builder-sheet";
 import { ImportSheet } from "./import-sheet";
-import { useStartSession } from "./use-start-session";
+import { previewSession, useStartSession } from "./use-start-session";
 
 const weekLabel = (detail: { rir: number[]; deload: boolean }, week: number) =>
   isDeloadWeek(detail, week) ? "Deload" : `Week ${week + 1}`;
+
+const stateLabels: Record<SessionState, string> = {
+  done: "done",
+  skipped: "skipped",
+  open: "in progress",
+  next: "next",
+  upcoming: "upcoming",
+};
 
 const openProgram = (id: number) =>
   router.push({ pathname: "/program", params: { id: String(id) } });
@@ -185,20 +192,7 @@ export function PlanScreen() {
     if (cell.workoutId && cell.state === "done")
       return router.push({ pathname: "/session/[id]", params: { id: String(cell.workoutId) } });
     if (cell.state === "open") return router.push("/workout");
-    const title = `${dayName(cell.dayId)} · ${weekLabel(detail, cell.week)}`;
-    if (cell.state === "skipped")
-      return Alert.alert(title, "This session was skipped.", [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Unskip",
-          onPress: () => write(() => unskipSession(detail.id, cell.week, cell.dayId)),
-        },
-      ]);
-    Alert.alert(title, undefined, [
-      { text: "Cancel", style: "cancel" },
-      { text: "Skip", onPress: () => write(() => skipSession(detail.id, cell.week, cell.dayId)) },
-      { text: "Start", onPress: () => begin(detail, cell.week, cell.dayId) },
-    ]);
+    previewSession(cell.week, cell.dayId);
   };
 
   const current = next?.week ?? totalWeeks(detail) - 1;
@@ -277,16 +271,28 @@ export function PlanScreen() {
                 {at.travel ? ", with stand-ins for what it doesn't have" : ""}
               </Text>
             )}
-            <SystemButton
-              icon="play"
-              onPress={() =>
-                next.state === "open"
-                  ? router.push("/workout")
-                  : begin(detail, next.week, next.dayId)
-              }
-            >
-              {next.state === "open" ? "Resume" : "Start"}
-            </SystemButton>
+            {next.state === "open" ? (
+              <SystemButton icon="barbell" onPress={() => router.push("/workout")}>
+                Resume
+              </SystemButton>
+            ) : (
+              <View className="flex-row gap-2">
+                <SystemButton
+                  variant="secondary"
+                  icon="eye-outline"
+                  onPress={() => previewSession(next.week, next.dayId)}
+                >
+                  Preview
+                </SystemButton>
+                <SystemButton
+                  icon="play"
+                  className="flex-1"
+                  onPress={() => begin(detail, next.week, next.dayId)}
+                >
+                  Start
+                </SystemButton>
+              </View>
+            )}
           </SystemPanel>
         ) : (
           <SystemPanel className="gap-3 bg-success-soft">
@@ -325,13 +331,14 @@ export function PlanScreen() {
                   <Pressable
                     key={cell.dayId}
                     accessibilityRole="button"
-                    accessibilityLabel={`${dayName(cell.dayId)}, ${weekLabel(detail, week)}, ${cell.state}`}
+                    accessibilityLabel={`${dayName(cell.dayId)}, ${weekLabel(detail, week)}, ${stateLabels[cell.state]}`}
                     onPress={() => cellAction(cell)}
                     className={twMerge(
                       "h-11 w-14 items-center justify-center rounded-xl active:opacity-60",
                       cell.state === "done" && "bg-success",
                       cell.state === "skipped" && "bg-surface-secondary",
-                      (cell.state === "next" || cell.state === "open") && "bg-accent",
+                      cell.state === "next" && "bg-accent",
+                      cell.state === "open" && "border-2 border-accent bg-accent-soft",
                       cell.state === "upcoming" && "border border-border"
                     )}
                   >
@@ -339,8 +346,11 @@ export function PlanScreen() {
                       <SystemIcon name="checkmark" size={18} color="success-foreground" />
                     )}
                     {cell.state === "skipped" && <Text className="text-muted">–</Text>}
-                    {(cell.state === "next" || cell.state === "open") && (
+                    {cell.state === "next" && (
                       <SystemIcon name="play" size={16} color="accent-foreground" />
+                    )}
+                    {cell.state === "open" && (
+                      <SystemIcon name="barbell" size={18} color="accent-soft-foreground" />
                     )}
                   </Pressable>
                 ))}
