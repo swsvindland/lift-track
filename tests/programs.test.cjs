@@ -504,3 +504,83 @@ test("programs can be saved for later, started, listed and deleted", () => {
   assert.equal(programs.programDetail(another), undefined);
   assert.equal(programs.otherPrograms().length, 1);
 });
+
+test("a preview plans what starting logs, and a session in progress is the only one up", () => {
+  const { programs, builder, exercises, workouts, loads, db, schema } = lift();
+  const all = exercises.allExercises([]);
+  const byId = (id) => all.find((e) => e.id === id);
+  const types = require("./harness.cjs").load("src/lib/exercises/types.ts");
+  const draft = builder.buildProgram(
+    {
+      days: 3,
+      minutes: 45,
+      experience: "intermediate",
+      weeks: 4,
+      priorities: [],
+      deprioritized: [],
+      equipment: types.equipment,
+      settings: [],
+    },
+    all
+  );
+  const detail = programs.programDetail(programs.startProgram(draft));
+  const gym = db.insert(schema.gyms).values(loads.defaultGym("kg")).returning().get();
+  const context = { gym, bodyWeightKg: 80, byId, exercises: all };
+  const [dayA, dayB] = detail.days;
+  const up = () =>
+    programs
+      .programProgress(detail)
+      .flat()
+      .filter((c) => c.state === "next" || c.state === "open");
+
+  // Week 1 day A: log it at 60 so week 2 has history to prescribe from.
+  const w1 = programs.startSession(detail, 0, dayA.id, context);
+  assert.deepEqual(
+    up().map((c) => [c.week, c.dayId, c.state]),
+    [[0, dayA.id, "open"]]
+  );
+  for (const block of workouts.workoutDetail(w1).exercises)
+    for (const set of block.sets) {
+      workouts.updateSet(set.id, { weightKg: 60 });
+      workouts.completeSet(set.id);
+    }
+  workouts.finishWorkout(w1);
+  assert.deepEqual(
+    up().map((c) => [c.week, c.dayId, c.state]),
+    [[0, dayB.id, "next"]]
+  );
+
+  // Previewing writes nothing; starting logs exactly what it showed.
+  const plan = programs.planSession(detail, 1, dayA.id, context);
+  assert.equal(workouts.activeWorkout(), undefined);
+  assert.equal(plan.day.id, dayA.id);
+  assert.equal(plan.rir, programs.weekRir(detail, 1));
+  const w2 = programs.startSession(detail, 1, dayA.id, context);
+  const session = workouts.workoutDetail(w2);
+  assert.deepEqual(
+    session.exercises.map((b) => [
+      b.exerciseId,
+      b.slotId,
+      b.repMin,
+      b.repMax,
+      b.advice,
+      b.sets.map((s) => [s.targetWeightKg, s.targetReps, s.targetRir]),
+    ]),
+    plan.exercises.map((e) => [
+      e.exercise.id,
+      e.slot.id,
+      e.reps[0],
+      e.reps[1],
+      e.advice,
+      e.sets.map((s) => [s.weightKg, s.reps, s.rir]),
+    ])
+  );
+  assert.ok(plan.exercises[0].sets[0].weightKg >= 60);
+
+  // Started out of order, the open session is still the only one up.
+  assert.deepEqual(
+    up().map((c) => [c.week, c.dayId, c.state]),
+    [[1, dayA.id, "open"]]
+  );
+  assert.equal(programs.nextSession(detail).state, "open");
+});
