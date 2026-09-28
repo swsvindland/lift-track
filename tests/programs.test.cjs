@@ -505,6 +505,66 @@ test("programs can be saved for later, started, listed and deleted", () => {
   assert.equal(programs.otherPrograms().length, 1);
 });
 
+test("swapping in a program session keeps the slot, prescribes the week and can be permanent", () => {
+  const { programs, builder, exercises, workouts, loads, db, schema } = lift();
+  const all = exercises.allExercises([]);
+  const byId = (id) => all.find((e) => e.id === id);
+  const types = require("./harness.cjs").load("src/lib/exercises/types.ts");
+  const draft = builder.buildProgram(
+    {
+      days: 2,
+      minutes: 45,
+      experience: "intermediate",
+      weeks: 4,
+      priorities: [],
+      deprioritized: [],
+      equipment: types.equipment,
+      settings: [],
+    },
+    all
+  );
+  const mesoId = programs.startProgram(draft);
+  const detail = programs.programDetail(mesoId);
+  const gym = db.insert(schema.gyms).values(loads.defaultGym("kg")).returning().get();
+  const context = { gym, bodyWeightKg: 80, byId };
+  const w = programs.startSession(detail, 0, detail.days[0].id, context);
+  let session = workouts.workoutDetail(w);
+  const [first, second] = session.exercises;
+  const replacement = (block) =>
+    all.find(
+      (e) => e.id !== block.exerciseId && !session.exercises.some((b) => b.exerciseId === e.id)
+    );
+
+  // Just today: the new exercise takes the slot and gets targets, the program is unchanged.
+  const today = replacement(first);
+  const swapped = programs.swapInSession(first.id, today, false, context);
+  session = workouts.workoutDetail(w);
+  const block = session.exercises.find((b) => b.id === swapped);
+  assert.equal(block.exerciseId, today.id);
+  assert.equal(block.slotId, first.slotId);
+  assert.equal(block.sets.length, first.sets.length);
+  assert.ok(block.sets.every((s) => s.targetRir === 3));
+  assert.equal(
+    programs.programDetail(mesoId).days[0].slots.find((s) => s.id === first.slotId).exerciseId,
+    first.exerciseId
+  );
+
+  // With a set done, the finished part stays and the rest of the program changes too.
+  workouts.completeSet(second.sets[0].id);
+  const later = replacement(second);
+  const kept = programs.swapInSession(second.id, later, true, context);
+  session = workouts.workoutDetail(w);
+  assert.ok(session.exercises.some((b) => b.id === second.id && b.sets.length === 1));
+  const moved = session.exercises.find((b) => b.id === kept);
+  assert.equal(moved.exerciseId, later.id);
+  assert.equal(moved.slotId, second.slotId);
+  assert.equal(moved.sets.length, second.sets.length - 1);
+  assert.equal(
+    programs.programDetail(mesoId).days[0].slots.find((s) => s.id === second.slotId).exerciseId,
+    later.id
+  );
+});
+
 test("a preview plans what starting logs, and a session in progress is the only one up", () => {
   const { programs, builder, exercises, workouts, loads, db, schema } = lift();
   const all = exercises.allExercises([]);
