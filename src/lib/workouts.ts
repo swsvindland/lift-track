@@ -761,41 +761,47 @@ export function replaceExercise(
   workoutExerciseId: number,
   exercise: { id: string; reps: readonly [number, number] }
 ) {
-  return db.transaction((tx) => {
-    const block = tx
-      .select()
-      .from(workoutExercises)
-      .where(eq(workoutExercises.id, workoutExerciseId))
-      .get();
-    if (!block) return null;
-    const rows = tx.select().from(sets).where(eq(sets.workoutExerciseId, block.id)).all();
-    const done = rows.filter((r) => r.completedAt);
-    const open = rows.filter((r) => !r.completedAt && r.kind !== "warmup");
-    if (!done.length) {
-      tx.delete(workoutExercises).where(eq(workoutExercises.id, block.id)).run();
-      return insertBlock(
-        block.workoutId,
-        exercise.id,
-        block.position,
-        exercise.reps,
-        open.length || undefined,
-        {
-          supersetGroup: block.supersetGroup,
-        }
-      );
-    }
-    // Keep the finished part in place and add the replacement right after it.
-    for (const r of rows.filter((r) => !r.completedAt))
-      tx.delete(sets).where(eq(sets.id, r.id)).run();
-    shiftAfter(block.workoutId, block.position);
+  return db.transaction(() => replaceBlock(workoutExerciseId, exercise));
+}
+
+/** `replaceExercise` for callers already in a transaction, since SQLite can't begin another. */
+export function replaceBlock(
+  workoutExerciseId: number,
+  exercise: { id: string; reps: readonly [number, number] }
+) {
+  const block = db
+    .select()
+    .from(workoutExercises)
+    .where(eq(workoutExercises.id, workoutExerciseId))
+    .get();
+  if (!block) return null;
+  const rows = db.select().from(sets).where(eq(sets.workoutExerciseId, block.id)).all();
+  const done = rows.filter((r) => r.completedAt);
+  const open = rows.filter((r) => !r.completedAt && r.kind !== "warmup");
+  if (!done.length) {
+    db.delete(workoutExercises).where(eq(workoutExercises.id, block.id)).run();
     return insertBlock(
       block.workoutId,
       exercise.id,
-      block.position + 1,
+      block.position,
       exercise.reps,
-      open.length || undefined
+      open.length || undefined,
+      {
+        supersetGroup: block.supersetGroup,
+      }
     );
-  });
+  }
+  // Keep the finished part in place and add the replacement right after it.
+  for (const r of rows.filter((r) => !r.completedAt))
+    db.delete(sets).where(eq(sets.id, r.id)).run();
+  shiftAfter(block.workoutId, block.position);
+  return insertBlock(
+    block.workoutId,
+    exercise.id,
+    block.position + 1,
+    exercise.reps,
+    open.length || undefined
+  );
 }
 
 function shiftAfter(workoutId: number, position: number) {

@@ -34,7 +34,7 @@ import {
   nudgesFor,
   withNudge,
   discardWorkout,
-  replaceExercise,
+  replaceBlock,
   workoutDetail,
   type WorkoutDetail,
 } from "./workouts";
@@ -784,7 +784,7 @@ export function swapInSession(
       .get();
     if (!block) return null;
     const workout = db.select().from(workouts).where(eq(workouts.id, block.workoutId)).get();
-    const newId = replaceExercise(workoutExerciseId, exercise);
+    const newId = replaceBlock(workoutExerciseId, exercise);
     if (!newId || !workout?.mesoId || block.slotId === null) return newId;
     const meso = db.select().from(mesocycles).where(eq(mesocycles.id, workout.mesoId)).get();
     if (!meso) return newId;
