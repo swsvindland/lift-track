@@ -1,30 +1,63 @@
 import { Pressable, View } from "react-native";
-import * as Haptics from "expo-haptics";
 import { twMerge } from "tailwind-merge";
-import { SystemText as Text } from "@/components/system";
-import { ActionMenu } from "@/components/ui";
 import type { Effort, WorkoutSet } from "@/db";
+import { useStore } from "@/lib/store";
+import type { Message } from "@/lib/translations";
+import { ActionMenu, SignalCell, Text, useHaptics, useSignalInk } from "@/vector";
 
-/* How hard a set felt, in three colors: red is 1 or fewer reps left, orange 1–3, green more.
+/* How hard a set felt, as one to three bars: three is 1 or fewer reps left, two 1–3, one more.
    It stands in for reps in reserve; blank means "as prescribed". */
 
-export const effortChoices: { value: Effort; label: string; hint: string; dot: string }[] = [
-  { value: "hard", label: "Hard", hint: "0–1 reps left", dot: "bg-effort-hard" },
-  { value: "good", label: "Good", hint: "1–3 left", dot: "bg-effort-good" },
-  { value: "easy", label: "Easy", hint: "4+ left", dot: "bg-effort-easy" },
+export const effortChoices: { value: Effort; label: Message; hint: Message }[] = [
+  { value: "hard", label: "effortHard", hint: "effortHardHint" },
+  { value: "good", label: "effortGood", hint: "effortGoodHint" },
+  { value: "easy", label: "effortEasy", hint: "effortEasyHint" },
 ];
 
-/** A set's effort: the rating, or a typed reps-in-reserve read as a color. */
+const effortLevel: Record<Effort, number> = { easy: 1, good: 2, hard: 3 };
+const barHeights = ["h-1.5", "h-[9px]", "h-3"];
+
+/**
+ * Effort as ascending bars, the same mark as the Watch: intensity, never a hue. Empty bars are outlined. In a
+ * selected SignalCell the bars are signal ink, like the kit Text and Icon beside them.
+ */
+export function EffortMark({ effort }: { effort: Effort | null }) {
+  const onSignal = useSignalInk();
+  const level = effort ? effortLevel[effort] : 0;
+  return (
+    <View
+      className="flex-row items-end gap-0.5"
+      accessibilityElementsHidden
+      importantForAccessibility="no-hide-descendants"
+    >
+      {barHeights.map((height, i) => (
+        <View
+          key={height}
+          className={twMerge(
+            "w-[3px]",
+            height,
+            i < level
+              ? onSignal
+                ? "bg-accent-foreground"
+                : "bg-foreground"
+              : onSignal
+                ? "border border-accent-foreground"
+                : "border border-border-strong"
+          )}
+        />
+      ))}
+    </View>
+  );
+}
+
+/** A set's effort: the rating, or a typed reps-in-reserve read as a level. */
 export function effortOf(row: Pick<WorkoutSet, "effort" | "rir">): Effort | null {
   if (row.effort) return row.effort;
   if (row.rir === null) return null;
   return row.rir <= 1 ? "hard" : row.rir <= 3 ? "good" : "easy";
 }
 
-const dotOf = (effort: Effort | null) =>
-  effortChoices.find((c) => c.value === effort)?.dot ?? "border-2 border-border";
-
-/** The effort column of a set row: a dot that opens the three choices. */
+/** The effort column of a set row: the mark, which opens the three choices. */
 export function EffortDot({
   effort,
   label,
@@ -34,20 +67,29 @@ export function EffortDot({
   label: string;
   onChange: (effort: Effort | null) => void;
 }) {
+  const { t } = useStore();
+  const chosen = effortChoices.find((c) => c.value === effort);
   return (
     <ActionMenu
-      accessibilityLabel={`${label} effort${effort ? `, ${effort}` : ""}`}
+      accessibilityLabel={
+        chosen
+          ? t("effortOfSetRated", {
+              set: label,
+              effort: t("effortWithHint", { label: t(chosen.label), hint: t(chosen.hint) }),
+            })
+          : t("effortOfSet", { set: label })
+      }
       trigger={
-        <Pressable className="h-11 w-11 items-center justify-center rounded-xl bg-surface-secondary">
-          <View className={twMerge("h-4 w-4 rounded-full", dotOf(effort))} />
+        <Pressable className="h-11 w-11 items-center justify-center rounded-control border border-field-border bg-field active:bg-surface-secondary">
+          <EffortMark effort={effort} />
         </Pressable>
       }
       sections={[
         {
-          title: "How hard was it?",
+          title: t("effortQuestion"),
           actions: effortChoices.map((c) => ({
             key: c.value,
-            label: `${c.label} · ${c.hint}`,
+            label: t("effortOption", { label: t(c.label), hint: t(c.hint) }),
             selected: effort === c.value,
             onPress: () => onChange(effort === c.value ? null : c.value),
           })),
@@ -57,42 +99,44 @@ export function EffortDot({
   );
 }
 
-/** Three colored buttons to rate the set just done, in one tap. */
+/**
+ * Three radio cells to rate the set just done, in one tap: kit SignalCells (signal fill, signal ink and a check
+ * when selected) holding the effort mark beside each word, which the kit Choices' text-only cells cannot hold.
+ */
 export function EffortPicker({
   effort,
   onChange,
-  inverted = false,
 }: {
   effort: Effort | null;
   onChange: (effort: Effort) => void;
-  /** On the dark rest bar. */
-  inverted?: boolean;
 }) {
+  const { t } = useStore();
+  const haptics = useHaptics();
   return (
-    <View className="flex-row gap-2" accessibilityRole="radiogroup">
-      {effortChoices.map((c) => {
-        const selected = effort === c.value;
-        return (
-          <Pressable
-            key={c.value}
-            accessibilityRole="radio"
-            accessibilityState={{ selected }}
-            accessibilityLabel={`${c.label}, ${c.hint}`}
-            onPress={() => {
-              void Haptics.selectionAsync().catch(() => {});
-              onChange(c.value);
-            }}
-            className={twMerge(
-              "h-11 flex-1 flex-row items-center justify-center gap-2 rounded-2xl",
-              inverted ? "border border-muted" : "bg-surface-secondary",
-              selected && (inverted ? "border-2 border-background" : "border-2 border-foreground")
-            )}
-          >
-            <View className={twMerge("h-3 w-3 rounded-full", c.dot)} />
-            <Text className={twMerge("font-medium", inverted && "text-background")}>{c.label}</Text>
-          </Pressable>
-        );
-      })}
+    <View
+      accessibilityRole="radiogroup"
+      accessibilityLabel={t("effortQuestion")}
+      className="flex-1 flex-row gap-2"
+    >
+      {effortChoices.map((c) => (
+        <SignalCell
+          key={c.value}
+          selected={effort === c.value}
+          accessibilityRole="radio"
+          accessibilityLabel={t("effortWithHint", { label: t(c.label), hint: t(c.hint) })}
+          onPress={() => {
+            haptics.selection();
+            onChange(c.value);
+          }}
+          check
+          className="flex-1 basis-0 gap-1.5"
+        >
+          <EffortMark effort={c.value} />
+          <Text variant="h4" className="shrink">
+            {t(c.label)}
+          </Text>
+        </SignalCell>
+      ))}
     </View>
   );
 }

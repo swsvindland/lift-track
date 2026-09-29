@@ -1,8 +1,5 @@
-import { useState } from "react";
-import { Switch } from "heroui-native";
+import { useState, type ReactNode } from "react";
 import { View } from "react-native";
-import { Chip, SystemButton, SystemLabel, SystemText as Text } from "@/components/system";
-import { Editor, ErrorText, Field, SettingsSelect } from "@/components/ui";
 import { equipmentLabels, muscleLabels, type Exercise } from "@/lib/exercises";
 import {
   equipment as equipmentList,
@@ -13,6 +10,18 @@ import {
   type Pattern,
 } from "@/lib/exercises/types";
 import { saveCustomExercise } from "@/lib/exercise-store";
+import { useStore } from "@/lib/store";
+import {
+  Editor,
+  ErrorText,
+  Field,
+  ListRow,
+  Panel,
+  Select,
+  SignalCell,
+  Text,
+  useHaptics,
+} from "@/vector";
 
 const patternLabel = (p: Pattern) =>
   p.replace(/([A-Z])/g, " $1").replace(/^./, (c) => c.toUpperCase());
@@ -24,6 +33,26 @@ type Props = {
   onSaved?: (id: string) => void;
 };
 
+/**
+ * A field label (the kit's field look) over a control with a hint below: the movement Select and the muscle
+ * cells. Select's own `showTitle` has no hint slot, so only the equipment Select (no hint) uses it.
+ */
+function Labeled({ label, hint, children }: { label: string; hint?: string; children: ReactNode }) {
+  return (
+    <View className="gap-2">
+      <Text variant="fieldLabel" tone="secondary">
+        {label}
+      </Text>
+      {children}
+      {hint ? (
+        <Text variant="caption" tone="muted">
+          {hint}
+        </Text>
+      ) : null}
+    </View>
+  );
+}
+
 /** Create or edit one of the user's own exercises. */
 export function CustomExerciseEditor(props: Props) {
   // Mounted only while open, so every opening starts from the exercise being edited.
@@ -31,15 +60,36 @@ export function CustomExerciseEditor(props: Props) {
 }
 
 function OpenEditor({ open, close, editing, onSaved }: Props) {
-  const [name, setName] = useState(editing?.name ?? "");
-  const [equipment, setEquipment] = useState<Equipment>(editing?.equipment ?? "machine");
-  const [pattern, setPattern] = useState<Pattern>(editing?.pattern ?? "horizontalPress");
-  const [weights, setWeights] = useState<Partial<Record<Muscle, 1 | 0.5>>>(editing?.muscles ?? {});
-  const [repMin, setRepMin] = useState(String(editing?.reps[0] ?? 8));
-  const [repMax, setRepMax] = useState(String(editing?.reps[1] ?? 12));
-  const [unilateral, setUnilateral] = useState(!!editing?.unilateral);
-  const [bodyweight, setBodyweight] = useState(editing?.load === "bodyweight");
+  const { t } = useStore();
+  const haptics = useHaptics();
+  const [initial] = useState(() => ({
+    name: editing?.name ?? "",
+    equipment: editing?.equipment ?? ("machine" as Equipment),
+    pattern: editing?.pattern ?? ("horizontalPress" as Pattern),
+    weights: (editing?.muscles ?? {}) as Partial<Record<Muscle, 1 | 0.5>>,
+    repMin: String(editing?.reps[0] ?? 8),
+    repMax: String(editing?.reps[1] ?? 12),
+    unilateral: !!editing?.unilateral,
+    bodyweight: editing?.load === "bodyweight",
+  }));
+  const [name, setName] = useState(initial.name);
+  const [equipment, setEquipment] = useState<Equipment>(initial.equipment);
+  const [pattern, setPattern] = useState<Pattern>(initial.pattern);
+  const [weights, setWeights] = useState(initial.weights);
+  const [repMin, setRepMin] = useState(initial.repMin);
+  const [repMax, setRepMax] = useState(initial.repMax);
+  const [unilateral, setUnilateral] = useState(initial.unilateral);
+  const [bodyweight, setBodyweight] = useState(initial.bodyweight);
   const [error, setError] = useState("");
+  const dirty =
+    name !== initial.name ||
+    equipment !== initial.equipment ||
+    pattern !== initial.pattern ||
+    repMin !== initial.repMin ||
+    repMax !== initial.repMax ||
+    unilateral !== initial.unilateral ||
+    bodyweight !== initial.bodyweight ||
+    muscles.some((m) => weights[m] !== initial.weights[m]);
 
   // Tapping a muscle cycles: not trained → primary → secondary → not trained.
   const cycle = (m: Muscle) =>
@@ -54,10 +104,10 @@ function OpenEditor({ open, close, editing, onSaved }: Props) {
   const save = () => {
     const min = Number(repMin);
     const max = Number(repMax);
-    if (!name.trim()) return setError("Give it a name.");
-    if (!Object.values(weights).includes(1)) return setError("Pick at least one primary muscle.");
+    if (!name.trim()) return setError(t("giveItAName"));
+    if (!Object.values(weights).includes(1)) return setError(t("pickPrimaryMuscle"));
     if (!Number.isInteger(min) || !Number.isInteger(max) || min < 1 || max < min || max > 100)
-      return setError("Enter a rep range such as 8 to 12.");
+      return setError(t("enterRepRange"));
     const id = saveCustomExercise({
       id: editing?.id,
       name,
@@ -75,73 +125,82 @@ function OpenEditor({ open, close, editing, onSaved }: Props) {
 
   return (
     <Editor
-      title={editing ? "Edit exercise" : "New exercise"}
+      title={t(editing ? "editExercise" : "newExercise")}
       open={open}
       close={close}
-      footer={<SystemButton onPress={save}>Save</SystemButton>}
+      dirty={dirty}
+      primary={{ label: t("save"), onPress: save }}
     >
-      <Field label="Name" value={name} onChange={setName} placeholder="Cable Y-Raise" />
-      <View className="gap-2">
-        <SystemLabel>Equipment</SystemLabel>
-        <SettingsSelect
-          title="Equipment"
-          values={equipmentList}
-          value={equipment}
-          onChange={setEquipment}
-          label={(e) => equipmentLabels[e]}
-        />
-      </View>
-      <View className="gap-2">
-        <SystemLabel>Movement</SystemLabel>
-        <SettingsSelect
-          title="Movement"
+      <Field
+        label={t("name")}
+        value={name}
+        onChange={setName}
+        placeholder={t("customExercisePlaceholder")}
+      />
+      <Select
+        title={t("equipment")}
+        showTitle
+        values={equipmentList}
+        value={equipment}
+        onChange={setEquipment}
+        label={(e) => equipmentLabels[e]}
+      />
+      <Labeled label={t("movement")} hint={t("movementHint")}>
+        <Select
+          title={t("movement")}
           values={patterns}
           value={pattern}
           onChange={setPattern}
           label={patternLabel}
         />
-        <Text className="text-sm text-muted">Swaps suggest exercises with the same movement.</Text>
-      </View>
-      <View className="gap-2">
-        <SystemLabel>Muscles</SystemLabel>
-        <Text className="text-sm text-muted">
-          Tap once for a primary muscle (a full set), twice for secondary (half a set).
-        </Text>
+      </Labeled>
+      <Labeled label={t("muscles")} hint={t("musclesHint")}>
+        {/* Three states per muscle (off, primary, secondary), so cells rather than a ChipRow's on/off chips. */}
         <View className="flex-row flex-wrap gap-2">
-          {muscles.map((m) => (
-            <Chip
-              key={m}
-              label={`${muscleLabels[m]}${weights[m] === 0.5 ? " ½" : ""}`}
-              selected={!!weights[m]}
-              onPress={() => cycle(m)}
-            />
-          ))}
+          {muscles.map((m) => {
+            const label =
+              weights[m] === 0.5 ? t("muscleHalf", { muscle: muscleLabels[m] }) : muscleLabels[m];
+            return (
+              <SignalCell
+                key={m}
+                size="sm"
+                check
+                className="px-3"
+                selected={!!weights[m]}
+                accessibilityLabel={label}
+                onPress={() => {
+                  haptics.selection();
+                  cycle(m);
+                }}
+              >
+                {label}
+              </SignalCell>
+            );
+          })}
         </View>
-      </View>
+      </Labeled>
       <View className="flex-row gap-3">
         <View className="flex-1">
-          <Field label="Reps from" value={repMin} onChange={setRepMin} numeric />
+          <Field label={t("repsFrom")} value={repMin} onChange={setRepMin} numeric />
         </View>
         <View className="flex-1">
-          <Field label="to" value={repMax} onChange={setRepMax} numeric />
+          <Field label={t("repsTo")} value={repMax} onChange={setRepMax} numeric />
         </View>
       </View>
-      <View className="flex-row items-center justify-between">
-        <Text>One side at a time</Text>
-        <Switch
-          isSelected={unilateral}
-          onSelectedChange={setUnilateral}
-          accessibilityLabel="One side at a time"
+      <Panel inset="none">
+        <ListRow
+          title={t("oneSideAtATime")}
+          trailing="toggle"
+          toggleValue={unilateral}
+          onToggle={setUnilateral}
         />
-      </View>
-      <View className="flex-row items-center justify-between">
-        <Text>Body weight plus added load</Text>
-        <Switch
-          isSelected={bodyweight}
-          onSelectedChange={setBodyweight}
-          accessibilityLabel="Body weight plus added load"
+        <ListRow
+          title={t("bodyweightPlusLoad")}
+          trailing="toggle"
+          toggleValue={bodyweight}
+          onToggle={setBodyweight}
         />
-      </View>
+      </Panel>
       <ErrorText message={error} />
     </Editor>
   );

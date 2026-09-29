@@ -7,6 +7,7 @@
     "icon": "./assets/images/icon.png",
     "scheme": "lifttrack",
     "userInterfaceStyle": "automatic",
+    "primaryColor": "#007088",
     "ios": {
       "icon": {
         "light": "./assets/images/icon.png",
@@ -18,7 +19,8 @@
       "appleTeamId": "9HAG9PT8LJ",
       "infoPlist": {
         "CFBundleDisplayName": "Lift",
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSSupportsLiveActivities": true
       }
     },
     "android": {
@@ -64,7 +66,24 @@
         }
       ],
       "expo-status-bar",
-      "expo-localization",
+      [
+        "expo-localization",
+        {
+          "supportedLocales": [
+            "en",
+            "es",
+            "fr",
+            "de",
+            "it",
+            "pt",
+            "nl",
+            "sv",
+            "ja",
+            "ko",
+            "zh-Hans"
+          ]
+        }
+      ],
       [
         "@kingstinct/react-native-healthkit",
         {
@@ -92,7 +111,6 @@
         }
       ],
       "expo-background-task",
-      "expo-live-activity",
       "expo-quick-actions",
       "expo-sharing",
       "@bacons/apple-targets"

@@ -1,20 +1,12 @@
 import { useEffect, useState } from "react";
-import { Pressable, View } from "react-native";
+import { View } from "react-native";
 import { router } from "expo-router";
-import {
-  MiniBar,
-  SystemButton,
-  SystemIcon,
-  SystemLabel,
-  SystemPanel,
-  SystemText as Text,
-} from "@/components/system";
-import { Screen } from "@/components/ui";
 import { write, useQuery } from "@/lib/data";
 import { muscleLabels } from "@/lib/exercises";
 import type { Muscle } from "@/lib/exercises/types";
 import { useExercises } from "@/lib/exercise-store";
-import { dayLabel, duration, rirText, weightText } from "@/lib/format";
+import { useLiftFormat } from "@/lib/format";
+import { fromKg } from "@/lib/metrics";
 import {
   activeMeso,
   awaitingFeedback,
@@ -27,6 +19,7 @@ import {
 import { previewSession, useStartSession } from "@/components/plan/use-start-session";
 import { TravelBanner } from "@/components/gyms/travel";
 import { useStore } from "@/lib/store";
+import { useCount } from "@/lib/use-count";
 import { setsPerMuscle, weekStart } from "@/lib/volume";
 import {
   activeWorkout,
@@ -36,6 +29,19 @@ import {
   workoutDetail,
   workoutsBetween,
 } from "@/lib/workouts";
+import {
+  Button,
+  ListRow,
+  Meta,
+  Meter,
+  Note,
+  Panel,
+  Screen,
+  SettingsSection,
+  Text,
+  Value,
+  useKitFormat,
+} from "@/vector";
 
 /** Refreshes elapsed time once a minute while a workout is open. */
 function useMinuteClock(active: boolean) {
@@ -48,7 +54,10 @@ function useMinuteClock(active: boolean) {
 }
 
 export function TodayScreen() {
-  const { units, weights, locale } = useStore();
+  const { units, weights, locale, t } = useStore();
+  const format = useKitFormat();
+  const { dayLabel, duration, rirText } = useLiftFormat();
+  const count = useCount();
   const { byId } = useExercises();
   const data = useQuery(() => {
     const open = activeWorkout();
@@ -89,10 +98,21 @@ export function TodayScreen() {
     router.push("/workout");
   };
 
+  const weekLabel = (program: { rir: number[]; deload: boolean }, week: number) =>
+    isDeloadWeek(program, week) ? t("deload") : t("weekN", { n: format.number(week + 1) });
+  const setsUnit = (sets: number) => t(format.plural(sets) === "one" ? "unitSet" : "unitSets");
+  const latest = weights[0]
+    ? format.unitParts(
+        fromKg(weights[0].weightKg, units),
+        units === "metric" ? "kilogram" : "pound",
+        1
+      )
+    : undefined;
+
   return (
     <Screen
-      title="Today"
-      subtitle={new Date().toLocaleDateString(locale, {
+      title={t("today")}
+      eyebrow={new Date().toLocaleDateString(locale, {
         weekday: "long",
         month: "long",
         day: "numeric",
@@ -100,13 +120,12 @@ export function TodayScreen() {
     >
       {!data.open && <TravelBanner />}
       {data.awaiting && (
-        <SystemPanel className="gap-3">
-          <SystemLabel>How did it go?</SystemLabel>
-          <Text className="text-lg font-semibold">
-            {data.awaiting.name || "Workout"} · {dayLabel(data.awaiting.startedAt, locale)}
-          </Text>
-          <View className="flex-row gap-2">
-            <SystemButton
+        <Panel>
+          <Panel.Title>{t("howDidItGo")}</Panel.Title>
+          <Meta items={[data.awaiting.name || t("workout"), dayLabel(data.awaiting.startedAt)]} />
+          <Panel.Footer>
+            <Button
+              variant="secondary"
               className="flex-1"
               onPress={() =>
                 router.push({
@@ -115,139 +134,128 @@ export function TodayScreen() {
                 })
               }
             >
-              Answer
-            </SystemButton>
-            <SystemButton
-              variant="ghost"
-              onPress={() => write(() => skipFeedback(data.awaiting!.id))}
-            >
-              Skip
-            </SystemButton>
-          </View>
-        </SystemPanel>
+              {t("answer")}
+            </Button>
+            <Button variant="ghost" onPress={() => write(() => skipFeedback(data.awaiting!.id))}>
+              {t("skip")}
+            </Button>
+          </Panel.Footer>
+        </Panel>
       )}
       {data.open ? (
-        <SystemPanel className="gap-3 bg-accent-soft">
-          <SystemLabel className="text-accent-soft-foreground">Workout in progress</SystemLabel>
-          <Text className="text-xl font-semibold">
-            {data.open.name || "Workout"} · {duration(data.open.startedAt)}
-          </Text>
-          <Text className="text-muted">
-            {done} of {openSets.length} sets done
-          </Text>
-          <SystemButton icon="play" onPress={() => router.push("/workout")}>
-            Resume
-          </SystemButton>
-        </SystemPanel>
+        <Panel tone="live">
+          <Panel.Header eyebrow={t("workoutInProgress")} meta={duration(data.open.startedAt)} />
+          <Panel.Title>{data.open.name || t("workout")}</Panel.Title>
+          <Note>
+            {t("setsDoneOf", {
+              done: format.number(done),
+              total: format.number(openSets.length),
+            })}
+          </Note>
+          <Button icon="play" onPress={() => router.push("/workout")}>
+            {t("resume")}
+          </Button>
+        </Panel>
       ) : data.program && data.next ? (
-        <SystemPanel className="gap-3 bg-accent-soft">
-          <SystemLabel className="text-accent-soft-foreground">
-            {data.program.name} ·{" "}
-            {isDeloadWeek(data.program, data.next.week) ? "Deload" : `Week ${data.next.week + 1}`}
-          </SystemLabel>
-          <Text className="text-xl font-semibold">
-            {data.program.days.find((d) => d.id === data.next!.dayId)?.name}
-          </Text>
-          <Text className="text-muted">
-            {rirText(weekRir(data.program, data.next.week))} on every set
-          </Text>
-          <View className="flex-row gap-2">
-            <SystemButton
+        <Panel tone="live">
+          <Panel.Header eyebrow={t("next")} meta={weekLabel(data.program, data.next.week)} />
+          <Panel.Title>
+            {data.program.days.find((d) => d.id === data.next!.dayId)?.name ?? ""}
+          </Panel.Title>
+          {/* The program name can be long, so it wraps here rather than truncating as an eyebrow. */}
+          <Meta
+            items={[
+              data.program.name,
+              t("rirOnEverySet", { rir: rirText(weekRir(data.program, data.next.week)) }),
+            ]}
+          />
+          <Panel.Footer>
+            <Button
               variant="secondary"
-              icon="eye-outline"
               onPress={() => previewSession(data.next!.week, data.next!.dayId)}
             >
-              Preview
-            </SystemButton>
-            <SystemButton
+              {t("preview")}
+            </Button>
+            <Button
               icon="play"
               className="flex-1"
               onPress={() => startProgramSession(data.program!, data.next!.week, data.next!.dayId)}
             >
-              Start
-            </SystemButton>
-          </View>
-          <SystemButton variant="ghost" onPress={() => begin()}>
-            Empty workout instead
-          </SystemButton>
-        </SystemPanel>
+              {t("start")}
+            </Button>
+          </Panel.Footer>
+          <Button variant="ghost" onPress={() => begin()}>
+            {t("emptyWorkoutInstead")}
+          </Button>
+        </Panel>
       ) : (
-        <SystemPanel className="gap-3 bg-accent-soft">
-          <SystemLabel className="text-accent-soft-foreground">No plan yet</SystemLabel>
-          <Text className="text-xl font-semibold">Set up your training</Text>
-          <SystemButton icon="construct-outline" onPress={() => router.navigate("/(tabs)/plan")}>
-            Build or import a plan
-          </SystemButton>
-        </SystemPanel>
+        <Panel>
+          <Panel.Header eyebrow={t("noPlanYet")} />
+          <Panel.Title>{t("setUpTraining")}</Panel.Title>
+          <Button onPress={() => router.navigate("/(tabs)/plan")}>{t("buildOrImportPlan")}</Button>
+        </Panel>
       )}
 
       {!data.open && !data.program && data.repeat.length > 0 && (
-        <View className="gap-2">
-          <SystemLabel>Repeat</SystemLabel>
+        <SettingsSection eyebrow={t("repeat")}>
           {data.repeat.map((w) => (
-            <Pressable
+            <ListRow
               key={w.id}
-              accessibilityRole="button"
-              accessibilityLabel={`Repeat ${w.name || "workout"} from ${dayLabel(w.startedAt, locale)}`}
+              title={w.name || format.list(w.exerciseIds.slice(0, 3).map((id) => byId(id).name))}
+              description={t("repeatSummary", {
+                day: dayLabel(w.startedAt),
+                exercises: count(w.exerciseIds.length, "exerciseCountOne", "exerciseCount"),
+                sets: count(w.setCount, "setCountOne", "setCount"),
+              })}
+              accessibilityLabel={t("repeatFrom", {
+                name: w.name || t("workout"),
+                day: dayLabel(w.startedAt),
+              })}
               onPress={() => begin(w.id)}
-              className="flex-row items-center gap-3 rounded-2xl bg-surface p-4 active:opacity-70"
-            >
-              <View className="flex-1 gap-1">
-                <Text className="font-semibold" numberOfLines={1}>
-                  {w.name ||
-                    w.exerciseIds
-                      .slice(0, 3)
-                      .map((id) => byId(id).name)
-                      .join(", ")}
-                </Text>
-                <Text className="text-sm text-muted" numberOfLines={1}>
-                  {dayLabel(w.startedAt, locale)} · {w.exerciseIds.length} exercises · {w.setCount}{" "}
-                  sets
-                </Text>
-              </View>
-              <SystemIcon name="repeat" color="muted" />
-            </Pressable>
+            />
           ))}
-        </View>
+        </SettingsSection>
       )}
 
-      <SystemPanel className="gap-3">
-        <View className="flex-row items-baseline justify-between">
-          <SystemLabel>This week</SystemLabel>
-          <Text className="text-sm text-muted">
-            {data.week.length} {data.week.length === 1 ? "workout" : "workouts"}
-          </Text>
-        </View>
+      <Panel>
+        <Panel.Header
+          eyebrow={t("thisWeek")}
+          meta={count(data.week.length, "workoutCountOne", "workoutCount")}
+        />
         {muscles.length ? (
-          muscles.map(([muscle, sets]) => (
-            <View key={muscle} className="gap-1">
-              <View className="flex-row justify-between">
-                <Text className="text-sm">{muscleLabels[muscle]}</Text>
-                <Text className="font-mono text-sm tabular-nums text-muted">
-                  {Math.round(sets * 10) / 10} {sets === 1 ? "set" : "sets"}
-                </Text>
+          muscles.map(([muscle, sets]) => {
+            const digits = Number.isInteger(sets) ? 0 : 1;
+            const shown = format.number(sets, digits);
+            return (
+              <View key={muscle} className="gap-1">
+                <View className="flex-row items-center justify-between gap-3">
+                  <Text variant="small" className="shrink">
+                    {muscleLabels[muscle]}
+                  </Text>
+                  <Value size="xs" tone="muted" value={shown} unit={setsUnit(sets)} />
+                </View>
+                <Meter
+                  value={sets}
+                  max={maxSets}
+                  size="sm"
+                  accessibilityLabel={muscleLabels[muscle]}
+                  valueText={count(sets, "setCountOne", "setCount", digits)}
+                />
               </View>
-              <MiniBar value={sets} max={maxSets} />
-            </View>
-          ))
+            );
+          })
         ) : (
-          <Text className="text-muted">Sets per muscle show up here as you train.</Text>
+          <Text tone="muted">{t("setsPerMuscleEmpty")}</Text>
         )}
-      </SystemPanel>
+      </Panel>
 
-      <Pressable
-        accessibilityRole="button"
-        onPress={() => router.push("/weight")}
-        className="flex-row items-center justify-between rounded-2xl bg-surface p-4 active:opacity-70"
-      >
-        <View className="gap-1">
-          <SystemLabel>Body weight</SystemLabel>
-          <Text className="text-lg font-semibold">
-            {weights[0] ? weightText(weights[0].weightKg, units) : "Add a weight"}
-          </Text>
-        </View>
-        <SystemIcon name="chevron-forward" color="muted" />
-      </Pressable>
+      <Panel inset="none">
+        <ListRow
+          title={t("bodyWeight")}
+          value={latest ? <Value size="s" tone="muted" {...latest} /> : t("addWeight")}
+          onPress={() => router.push("/weight")}
+        />
+      </Panel>
     </Screen>
   );
 }

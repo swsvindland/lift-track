@@ -5,8 +5,16 @@ import { configureHealthSchedule, syncHealthIfDue } from "./health-schedule";
 import { desc } from "drizzle-orm";
 import { getLocales, useLocales } from "expo-localization";
 import { db, preferences, weightEntries } from "@/db";
+import { localeTag } from "@/vector";
 import type { Units } from "./metrics";
-import { languagePreference, resolveLanguage, type Language, translate } from "./translations";
+import {
+  interpolate,
+  languagePreference,
+  resolveLanguage,
+  translate,
+  type Language,
+  type Message,
+} from "./translations";
 
 function read() {
   const prefs = Object.fromEntries(
@@ -40,10 +48,11 @@ function read() {
 }
 type Store = ReturnType<typeof read> & {
   language: Language;
+  /** The kit's Intl tag for the language (en-GB stays en-GB): app dates and numbers match the kit's. */
   locale: string;
   refresh: () => void;
   setPreference: (key: string, value: string) => void;
-  t: (key: string) => string;
+  t: (key: Message, values?: Record<string, string | number>) => string;
   number: (value: number, digits?: number) => string;
   date: (value: string) => string;
 };
@@ -86,7 +95,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       .run();
     refresh();
   };
-  const locale = language === "zh" ? "zh-CN" : language;
+  const locale = localeTag(language, locales);
   return (
     <Context.Provider
       value={{
@@ -95,7 +104,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         locale,
         refresh,
         setPreference,
-        t: (key) => translate(language, key),
+        t: (key, values) =>
+          values ? interpolate(translate(language, key), values) : translate(language, key),
         number: (value, digits = 1) =>
           new Intl.NumberFormat(locale, {
             minimumFractionDigits: digits,

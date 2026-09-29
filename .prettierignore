@@ -12,3 +12,11 @@ expo-env.d.ts
 uniwind-types.d.ts
 .DS_Store
 targets/*/Assets.xcassets
+# Vector kit files are synced from vector-design/kit and hash-checked: never reformat them.
+src/vector/
+src/global.css
+src/app/vector-gallery.tsx
+docs/design-system.md
+scripts/vector-kit.mjs
+eslint.vector.cjs
+tests/vector.test.*

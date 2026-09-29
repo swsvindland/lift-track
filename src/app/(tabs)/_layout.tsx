@@ -1,38 +1,45 @@
 import { NativeTabs } from "expo-router/unstable-native-tabs";
-import { useThemeColor } from "heroui-native";
 import { QuickActionItems } from "@/components/quick-actions";
+import { useStore } from "@/lib/store";
+import { tabOptions, useKit } from "@/vector";
 
 export default function TabsLayout() {
-  const background = useThemeColor("background");
-  const accent = useThemeColor("accent-soft-foreground");
+  const { t } = useStore();
+  const { scheme } = useKit();
+  // No bar colours: iOS 26 draws the tab bar as Liquid Glass; tabOptions sets the tint (and Android's bar).
+  // The dock and Undo come from the DockProvider around the root Stack (src/app/_layout.tsx).
   return (
     <>
       <QuickActionItems />
-      <NativeTabs
-        tintColor={accent}
-        backgroundColor={background}
-        labelVisibilityMode="labeled"
-        backBehavior="initialRoute"
-      >
-        <NativeTabs.Trigger name="index" contentStyle={{ backgroundColor: background }}>
-          <NativeTabs.Trigger.Label>Today</NativeTabs.Trigger.Label>
-          <NativeTabs.Trigger.Icon sf="dumbbell" md="fitness_center" />
+      <NativeTabs {...tabOptions(scheme)}>
+        <NativeTabs.Trigger name="index">
+          <NativeTabs.Trigger.Label>{t("today")}</NativeTabs.Trigger.Label>
+          <NativeTabs.Trigger.Icon
+            sf={{ default: "dumbbell", selected: "dumbbell.fill" }}
+            md="fitness_center"
+          />
         </NativeTabs.Trigger>
-        <NativeTabs.Trigger name="plan" contentStyle={{ backgroundColor: background }}>
-          <NativeTabs.Trigger.Label>Plan</NativeTabs.Trigger.Label>
-          <NativeTabs.Trigger.Icon sf="calendar.day.timeline.left" md="view_timeline" />
+        <NativeTabs.Trigger name="plan">
+          <NativeTabs.Trigger.Label>{t("plan")}</NativeTabs.Trigger.Label>
+          <NativeTabs.Trigger.Icon sf="calendar" md="calendar_month" />
         </NativeTabs.Trigger>
-        <NativeTabs.Trigger name="progress" contentStyle={{ backgroundColor: background }}>
-          <NativeTabs.Trigger.Label>Progress</NativeTabs.Trigger.Label>
+        <NativeTabs.Trigger name="progress">
+          <NativeTabs.Trigger.Label>{t("progress")}</NativeTabs.Trigger.Label>
           <NativeTabs.Trigger.Icon sf="chart.xyaxis.line" md="monitoring" />
         </NativeTabs.Trigger>
-        <NativeTabs.Trigger name="library" contentStyle={{ backgroundColor: background }}>
-          <NativeTabs.Trigger.Label>Exercises</NativeTabs.Trigger.Label>
-          <NativeTabs.Trigger.Icon sf="list.bullet.rectangle" md="list_alt" />
+        <NativeTabs.Trigger name="library">
+          <NativeTabs.Trigger.Label>{t("exercises")}</NativeTabs.Trigger.Label>
+          <NativeTabs.Trigger.Icon
+            sf={{ default: "list.bullet.rectangle", selected: "list.bullet.rectangle.fill" }}
+            md="list_alt"
+          />
         </NativeTabs.Trigger>
-        <NativeTabs.Trigger name="settings" contentStyle={{ backgroundColor: background }}>
-          <NativeTabs.Trigger.Label>Settings</NativeTabs.Trigger.Label>
-          <NativeTabs.Trigger.Icon sf="gearshape" md="settings" />
+        <NativeTabs.Trigger name="settings">
+          <NativeTabs.Trigger.Label>{t("settings")}</NativeTabs.Trigger.Label>
+          <NativeTabs.Trigger.Icon
+            sf={{ default: "gearshape", selected: "gearshape.fill" }}
+            md="settings"
+          />
         </NativeTabs.Trigger>
       </NativeTabs>
     </>

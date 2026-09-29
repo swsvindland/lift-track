@@ -1,3 +1,6 @@
+import { eq } from "drizzle-orm";
+import { getLocales } from "expo-localization";
+import { db, preferences } from "@/db";
 import en from "./locales/en.json";
 import es from "./locales/es.json";
 import fr from "./locales/fr.json";
@@ -40,10 +43,35 @@ export function resolveLanguage(
     : "en";
 }
 
+/**
+ * The app's language outside React (notifications, the Live Activity, the rest label): the saved
+ * choice, else the phone's, as the store resolves it.
+ */
+export function currentLanguage(): Language {
+  let saved: string | undefined;
+  try {
+    saved = db.select().from(preferences).where(eq(preferences.key, "language")).get()?.value;
+  } catch {
+    // Before the first migration there is no preferences table: follow the phone.
+  }
+  return resolveLanguage(languagePreference(saved), getLocales()[0]?.languageCode);
+}
+
 export const dictionaries = { en, es, fr, de, it, pt, nl, sv, ja, ko, zh } satisfies Record<
   Language,
   Record<keyof typeof en, string>
 >;
-export function translate(language: Language, key: string): string {
-  return Object.hasOwn(en, key) ? dictionaries[language][key as keyof typeof en] : key;
+/** Every translation key; an unknown key is a type error. */
+export type Message = keyof typeof en;
+export function isMessage(key: string): key is Message {
+  return Object.hasOwn(en, key);
+}
+export function translate(language: Language, key: Message): string {
+  return dictionaries[language][key];
+}
+/** Fills `{name}` placeholders; a placeholder without a value stays as written. */
+export function interpolate(text: string, values: Record<string, string | number>) {
+  return text.replace(/\{(\w+)\}/g, (match, name: string) =>
+    Object.hasOwn(values, name) ? String(values[name]) : match
+  );
 }

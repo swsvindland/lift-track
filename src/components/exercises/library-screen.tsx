@@ -1,17 +1,27 @@
 import { useMemo, useState } from "react";
-import { ScrollView, View } from "react-native";
 import { router } from "expo-router";
-import { Chip, SystemButton, SystemText as Text } from "@/components/system";
-import { Screen, SearchInput } from "@/components/ui";
 import { muscleLabels, searchExercises } from "@/lib/exercises";
 import { muscles, type Muscle } from "@/lib/exercises/types";
 import { useExercises } from "@/lib/exercise-store";
+import { useStore } from "@/lib/store";
+import {
+  Button,
+  ChipRow,
+  Note,
+  Panel,
+  Screen,
+  SearchInput,
+  SystemState,
+  useKitFormat,
+} from "@/vector";
 import { CustomExerciseEditor } from "./custom-exercise-editor";
 import { ExerciseRow } from "./exercise-picker";
 
 const LIMIT = 80;
 
 export function LibraryScreen() {
+  const { t } = useStore();
+  const format = useKitFormat();
   const { all, settingFor } = useExercises();
   const [query, setQuery] = useState("");
   const [muscle, setMuscle] = useState<Muscle | null>(null);
@@ -26,52 +36,53 @@ export function LibraryScreen() {
   return (
     <>
       <Screen
-        title="Exercises"
+        title={t("exercises")}
         action={
-          <SystemButton variant="secondary" icon="add" onPress={() => setCreating(true)}>
-            New
-          </SystemButton>
+          <Button variant="secondary" icon="add" onPress={() => setCreating(true)}>
+            {t("newExercise")}
+          </Button>
         }
       >
         <SearchInput
           value={query}
           onChange={setQuery}
-          placeholder={`Search ${all.filter((e) => !e.archived).length} exercises`}
-          accessibilityLabel="Search exercises"
+          placeholder={t("searchNExercises", {
+            n: format.number(all.filter((e) => !e.archived).length),
+          })}
+          accessibilityLabel={t("searchExercises")}
         />
-        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-          <View className="flex-row gap-2">
-            <Chip
-              label="★ Favorites"
-              selected={favorites}
-              onPress={() => setFavorites(!favorites)}
-            />
-            {muscles.map((m) => (
-              <Chip
-                key={m}
-                label={muscleLabels[m]}
-                selected={muscle === m}
-                onPress={() => setMuscle(muscle === m ? null : m)}
+        <ChipRow
+          values={muscles}
+          value={muscle}
+          onChange={setMuscle}
+          label={(m) => muscleLabels[m]}
+          accessibilityLabel={t("filterByMuscle")}
+          toggle={{
+            label: t("favorites"),
+            icon: "favorite",
+            value: favorites,
+            onChange: setFavorites,
+          }}
+        />
+        {results.length ? (
+          <Panel inset="none">
+            {results.slice(0, LIMIT).map((e) => (
+              <ExerciseRow
+                key={e.id}
+                exercise={e}
+                favorite={settingFor(e.id)?.favorite}
+                onPress={() => router.push({ pathname: "/exercise/[id]", params: { id: e.id } })}
               />
             ))}
-          </View>
-        </ScrollView>
-        <View>
-          {results.slice(0, LIMIT).map((e) => (
-            <ExerciseRow
-              key={e.id}
-              exercise={e}
-              favorite={settingFor(e.id)?.favorite}
-              onPress={() => router.push({ pathname: "/exercise/[id]", params: { id: e.id } })}
-            />
-          ))}
-          {results.length > LIMIT && (
-            <Text className="py-4 text-center text-sm text-muted">
-              {results.length - LIMIT} more · search or filter to narrow
-            </Text>
-          )}
-          {!results.length && <Text className="py-8 text-center text-muted">No matches.</Text>}
-        </View>
+          </Panel>
+        ) : (
+          <SystemState kind="empty" message={t("noMatches")} />
+        )}
+        {results.length > LIMIT && (
+          <Note className="text-center">
+            {t("moreSearchToNarrow", { n: format.number(results.length - LIMIT) })}
+          </Note>
+        )}
       </Screen>
       <CustomExerciseEditor open={creating} close={() => setCreating(false)} />
     </>

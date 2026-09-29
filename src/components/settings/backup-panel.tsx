@@ -1,7 +1,5 @@
 import { useRef, useState } from "react";
 import { Alert, View } from "react-native";
-import { SystemButton, SystemLabel, SystemPanel, SystemText as Text } from "@/components/system";
-import { Choices, ErrorText, Field } from "@/components/ui";
 import { backupSummary, type Backup } from "@/lib/backup-data";
 import {
   exportBackup,
@@ -12,12 +10,26 @@ import {
 } from "@/lib/backup-files";
 import { changed, useQuery } from "@/lib/data";
 import { useStore } from "@/lib/store";
+import { useCount } from "@/lib/use-count";
+import {
+  Button,
+  Callout,
+  Choices,
+  ErrorText,
+  Field,
+  Heading,
+  Label,
+  Meta,
+  Note,
+  Panel,
+} from "@/vector";
 
-type Mode = "Create backup" | "Restore backup";
+type Mode = "create" | "restore";
 
 export function BackupPanel() {
-  const { refresh, date } = useStore();
-  const [mode, setMode] = useState<Mode>("Create backup");
+  const { refresh, date, t } = useStore();
+  const count = useCount();
+  const [mode, setMode] = useState<Mode>("create");
   const [password, setPassword] = useState("");
   const [confirmation, setConfirmation] = useState("");
   const [preview, setPreview] = useState<Backup | null>(null);
@@ -36,7 +48,7 @@ export function BackupPanel() {
     try {
       await work();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "The backup didn't finish.");
+      setError(e instanceof Error ? e.message : t("backupFailed"));
     } finally {
       locked.current = false;
       setBusy(false);
@@ -45,98 +57,90 @@ export function BackupPanel() {
 
   const summary = preview ? backupSummary(preview) : null;
   return (
-    <SystemPanel className="gap-4">
-      <SystemLabel>Backup & restore</SystemLabel>
-      <Text className="text-sm text-muted">
-        An encrypted file you save wherever you like. There&apos;s no cloud copy and no password
-        recovery.
-      </Text>
-      {!busy && !preview && (
-        <Choices
-          values={["Create backup", "Restore backup"] as const}
-          value={mode}
-          label={(value) => value}
-          onChange={(value) => {
-            setMode(value);
-            setError("");
-            setMessage("");
-            setPassword("");
-            setConfirmation("");
-          }}
-        />
-      )}
-      {!preview && (
-        <>
-          <Field
-            label="Backup password"
-            value={password}
-            onChange={setPassword}
-            secure
-            disabled={busy}
+    <View className="gap-2">
+      <Label accessibilityRole="header">{t("backupAndRestore")}</Label>
+      <Panel>
+        <Note>{t("backupIntro")}</Note>
+        {!busy && !preview && (
+          <Choices
+            values={["create", "restore"] as const}
+            value={mode}
+            label={(value) => t(value === "create" ? "createBackup" : "restoreBackup")}
+            accessibilityLabel={t("backupAndRestore")}
+            onChange={(value) => {
+              setMode(value);
+              setError("");
+              setMessage("");
+              setPassword("");
+              setConfirmation("");
+            }}
           />
-          {mode === "Create backup" && (
+        )}
+        {!preview && (
+          <>
             <Field
-              label="Confirm password"
-              value={confirmation}
-              onChange={setConfirmation}
+              label={t("backupPassword")}
+              value={password}
+              onChange={setPassword}
               secure
               disabled={busy}
             />
-          )}
-          <Text className="text-sm text-muted">
-            At least 10 characters. It can&apos;t be recovered.
-          </Text>
-          <SystemButton
-            isDisabled={busy}
-            onPress={() =>
-              void run(async () => {
-                if (password.length < 10 || password.length > 256)
-                  throw new Error("Use a password between 10 and 256 characters.");
-                if (mode === "Create backup") {
-                  if (password !== confirmation) throw new Error("The passwords don't match.");
-                  await exportBackup(password);
-                  setPassword("");
-                  setConfirmation("");
-                  setMessage(
-                    "The backup is saved only if you picked a place for it in the share sheet."
-                  );
-                } else setPreview(await importBackup(password));
-              })
-            }
-          >
-            {busy
-              ? "Working…"
-              : mode === "Create backup"
-                ? "Save encrypted backup"
-                : "Choose backup file"}
-          </SystemButton>
-        </>
-      )}
-      {preview && summary && (
-        <View className="gap-3">
-          <Text className="font-semibold">Backup from {date(preview.createdAt)}</Text>
-          <Text>
-            {summary.workouts} workouts · {summary.sets} sets · {summary.programs} programs
-          </Text>
-          <Text>
-            {summary.weights} weights · {summary.customExercises} custom exercises
-            {summary.first ? ` · since ${date(summary.first)}` : ""}
-          </Text>
-          <Text className="text-sm text-muted">
-            Replaces your workouts, programs, exercises, gyms and weights, and turns Health sync
-            off. A recovery copy of what you have now is saved first.
-          </Text>
-          <SystemButton
-            variant="danger-soft"
-            isDisabled={busy}
-            onPress={() =>
-              Alert.alert(
-                "Replace everything here?",
-                "Your current workouts, programs and weights are replaced by this backup. A recovery copy is saved first.",
-                [
-                  { text: "Cancel", style: "cancel" },
+            {mode === "create" && (
+              <Field
+                label={t("confirmPassword")}
+                value={confirmation}
+                onChange={setConfirmation}
+                secure
+                disabled={busy}
+              />
+            )}
+            <Note>{t("backupPasswordHint")}</Note>
+            <Button
+              loading={busy}
+              loadingLabel={t("working")}
+              onPress={() =>
+                void run(async () => {
+                  if (password.length < 10 || password.length > 256)
+                    throw new Error(t("backupPasswordLength"));
+                  if (mode === "create") {
+                    if (password !== confirmation) throw new Error(t("backupPasswordsDiffer"));
+                    await exportBackup(password);
+                    setPassword("");
+                    setConfirmation("");
+                    setMessage(t("backupSavedNote"));
+                  } else setPreview(await importBackup(password));
+                })
+              }
+            >
+              {t(mode === "create" ? "saveEncryptedBackup" : "chooseBackupFile")}
+            </Button>
+          </>
+        )}
+        {preview && summary && (
+          <View className="gap-3">
+            <Heading level={4}>{t("backupFrom", { date: date(preview.createdAt) })}</Heading>
+            <Meta
+              tone="default"
+              items={[
+                count(summary.workouts, "workoutCountOne", "workoutCount"),
+                count(summary.sets, "setCountOne", "setCount"),
+                count(summary.programs, "programCountOne", "programCount"),
+                count(summary.weights, "weightCountOne", "weightCount"),
+                count(summary.customExercises, "customExerciseCountOne", "customExerciseCount"),
+                summary.first ? t("sinceDay", { day: date(summary.first) }) : "",
+              ]}
+            />
+            <Note>{t("restoreReplacesNote")}</Note>
+            <Button
+              variant="destructive"
+              loading={busy}
+              loadingLabel={t("restoring")}
+              onPress={() =>
+                // vector: irreversible
+                Alert.alert(t("replaceEverythingQuestion"), t("replaceEverythingBody"), [
+                  { text: t("cancel"), style: "cancel" },
                   {
-                    text: "Restore",
+                    text: t("restore"),
                     style: "destructive",
                     onPress: () =>
                       void run(async () => {
@@ -145,44 +149,38 @@ export function BackupPanel() {
                         changed();
                         setPreview(null);
                         setPassword("");
-                        setMessage(
-                          "Restored. What you had before is in the recovery backup below, with the same password."
-                        );
+                        setMessage(t("restoredNote"));
                       }),
                   },
-                ]
-              )
-            }
+                ])
+              }
+            >
+              {t("replaceWithBackup")}
+            </Button>
+            <Button
+              variant="ghost"
+              disabled={busy}
+              onPress={() => {
+                setPreview(null);
+                setPassword("");
+              }}
+            >
+              {t("cancel")}
+            </Button>
+          </View>
+        )}
+        {recovery && !preview && (
+          <Button
+            variant="secondary"
+            disabled={busy}
+            onPress={() => void run(() => shareBackupFile(recovery))}
           >
-            {busy ? "Restoring…" : "Replace with this backup"}
-          </SystemButton>
-          <SystemButton
-            variant="ghost"
-            isDisabled={busy}
-            onPress={() => {
-              setPreview(null);
-              setPassword("");
-            }}
-          >
-            Cancel
-          </SystemButton>
-        </View>
-      )}
-      {recovery && !preview && (
-        <SystemButton
-          variant="secondary"
-          isDisabled={busy}
-          onPress={() => void run(() => shareBackupFile(recovery))}
-        >
-          Export the recovery backup
-        </SystemButton>
-      )}
-      {!!message && (
-        <Text className="text-sm text-success" accessibilityLiveRegion="polite">
-          {message}
-        </Text>
-      )}
-      <ErrorText message={error} />
-    </SystemPanel>
+            {t("exportRecoveryBackup")}
+          </Button>
+        )}
+        {!!message && <Callout tone="success">{message}</Callout>}
+        <ErrorText message={error} />
+      </Panel>
+    </View>
   );
 }

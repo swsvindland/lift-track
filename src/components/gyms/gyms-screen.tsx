@@ -1,28 +1,28 @@
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { Pressable, View } from "react-native";
-import { Stack } from "expo-router";
-import { useThemeColor } from "heroui-native";
-import {
-  SystemButton,
-  SystemIcon,
-  SystemLabel,
-  SystemPanel,
-  SystemText as Text,
-} from "@/components/system";
-import { Screen } from "@/components/ui";
 import { useQuery } from "@/lib/data";
 import { gymKinds, gymPresets, presetGym } from "@/lib/loads";
 import { useStore } from "@/lib/store";
 import { activeGym, listGyms, travelPlan } from "@/lib/workouts";
+import {
+  Button,
+  DetailScreen,
+  Icon,
+  ListRow,
+  Meta,
+  Panel,
+  SettingsSection,
+  Status,
+  Text,
+} from "@/vector";
 import { GymEditor, type EditableGym } from "./gym-editor";
-import { gymSummary } from "./gym-summary";
+import { useGymSummary } from "./gym-summary";
 import { TravelBanner, TravelSheet } from "./travel";
 
 /** Your gyms, a main one among them, and where you're training while away. */
 export function GymsScreen() {
-  const { units } = useStore();
-  const background = useThemeColor("background");
-  const foreground = useThemeColor("foreground");
+  const { units, t } = useStore();
+  const summary = useGymSummary();
   const data = useQuery(
     () => ({ gyms: listGyms(units), main: activeGym(units), trip: travelPlan() }),
     [units]
@@ -33,86 +33,61 @@ export function GymsScreen() {
 
   return (
     <>
-      <Screen title="Gyms" nativeHeader>
-        <Stack.Screen
-          options={{
-            headerShown: true,
-            title: "Gyms",
-            headerBackButtonDisplayMode: "minimal",
-            headerStyle: { backgroundColor: background },
-            headerTintColor: foreground,
-            contentStyle: { backgroundColor: background },
-          }}
-        />
+      <DetailScreen title={t("gyms")}>
         {data.trip ? (
           <TravelBanner onEdit={() => setTraveling(true)} />
         ) : (
-          <SystemPanel className="gap-3">
-            <Text className="font-semibold">Traveling?</Text>
-            <Text className="text-sm text-muted">
-              Pick the gym you&apos;ll use and your last day there. Sessions adapt until then, and
-              your program carries on when you&apos;re back.
-            </Text>
-            <SystemButton
-              variant="secondary"
-              icon="airplane-outline"
-              onPress={() => setTraveling(true)}
-            >
-              I&apos;m traveling
-            </SystemButton>
-          </SystemPanel>
+          <Panel>
+            <Panel.Title>{t("travelingQuestion")}</Panel.Title>
+            <Panel.Description>{t("travelingPrompt")}</Panel.Description>
+            <Panel.Footer>
+              <Button variant="secondary" onPress={() => setTraveling(true)}>
+                {t("startTrip")}
+              </Button>
+            </Panel.Footer>
+          </Panel>
         )}
 
-        <View className="gap-2">
-          <SystemLabel>Your gyms</SystemLabel>
-          {data.gyms.map((gym) => (
-            <Pressable
-              key={gym.id}
-              accessibilityRole="button"
-              onPress={() => setEditing(gym)}
-              className="flex-row items-center gap-3 rounded-2xl bg-surface p-4 active:opacity-70"
-            >
-              <View className="flex-1 gap-1">
-                <View className="flex-row items-center gap-2">
-                  <Text className="font-semibold" numberOfLines={1}>
-                    {gym.name}
-                  </Text>
-                  {gym.id === data.main.id && <Badge label="Main" />}
-                  {gym.id === data.trip?.gym.id && <Badge label="Traveling" />}
-                </View>
-                <Text className="text-sm text-muted" numberOfLines={2}>
-                  {gymSummary(gym)}
-                </Text>
-              </View>
-              <SystemIcon name="chevron-forward" color="muted" />
-            </Pressable>
-          ))}
-        </View>
-
-        <View className="gap-2">
-          <SystemLabel>Add a gym</SystemLabel>
-          <SystemPanel className="gap-1">
-            {gymKinds.map((kind) => (
+        <SettingsSection eyebrow={t("yourGyms")}>
+          {data.gyms.map((gym, i) => (
+            <Fragment key={gym.id}>
+              {i > 0 && <View className="ms-4 h-px bg-separator" />}
+              {/* A row of its own: the summary is facets (Meta), which a ListRow description cannot hold. */}
               <Pressable
-                key={kind}
                 accessibilityRole="button"
-                onPress={() => setEditing(presetGym(kind, unit))}
-                className="min-h-11 flex-row items-center gap-3 py-2 active:opacity-60"
+                onPress={() => setEditing(gym)}
+                className="min-h-14 flex-row items-center gap-3 px-4 py-3 active:bg-surface-secondary"
               >
-                <View className="flex-1 gap-0.5">
-                  <Text>{gymPresets[kind].name}</Text>
-                  <Text className="text-sm text-muted">{gymPresets[kind].description}</Text>
+                <View className="flex-1 gap-1">
+                  <Text variant="bodyStrong">{gym.name}</Text>
+                  {(gym.id === data.main.id || gym.id === data.trip?.gym.id) && (
+                    <View className="flex-row flex-wrap gap-x-4 gap-y-1">
+                      {gym.id === data.main.id && <Status state="ok" label={t("mainStatus")} />}
+                      {gym.id === data.trip?.gym.id && (
+                        <Status state="live" label={t("traveling")} />
+                      )}
+                    </View>
+                  )}
+                  <Meta items={summary(gym)} />
                 </View>
-                <SystemIcon name="add" size={18} color="muted" />
+                <Icon name="forward" size={17} tone="muted" />
               </Pressable>
-            ))}
-          </SystemPanel>
-          <Text className="text-sm text-muted">
-            Each starts from typical equipment; turn equipment and single exercises on or off to
-            match the real thing.
-          </Text>
-        </View>
-      </Screen>
+            </Fragment>
+          ))}
+        </SettingsSection>
+
+        <SettingsSection eyebrow={t("addGym")} footnote={t("addGymNote")}>
+          {gymKinds.map((kind) => (
+            <ListRow
+              key={kind}
+              title={gymPresets[kind].name}
+              description={gymPresets[kind].description}
+              trailing={<Icon name="add" size={17} tone="muted" />}
+              onPress={() => setEditing(presetGym(kind, unit))}
+            />
+          ))}
+        </SettingsSection>
+      </DetailScreen>
       {editing && (
         <GymEditor
           open
@@ -123,13 +98,5 @@ export function GymsScreen() {
       )}
       <TravelSheet open={traveling} close={() => setTraveling(false)} />
     </>
-  );
-}
-
-function Badge({ label }: { label: string }) {
-  return (
-    <View className="rounded-full bg-accent-soft px-2 py-0.5">
-      <Text className="text-xs text-accent-soft-foreground">{label}</Text>
-    </View>
   );
 }

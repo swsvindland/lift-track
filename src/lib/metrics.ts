@@ -45,8 +45,9 @@ export function weightTrend(entries: { measuredAt: string; weightKg: number }[])
       return { day, raw, trend };
     });
 }
-export function shortDay(day: string, language: string, weekday = false) {
-  return new Date(`${day}T12:00:00`).toLocaleDateString(language === "zh" ? "zh-CN" : language, {
+/** "Sep 1" ("Mon, Sep 1" with the weekday) in `locale`, the store's kit tag, so it matches the kit's charts. */
+export function shortDay(day: string, locale: string, weekday = false) {
+  return new Date(`${day}T12:00:00`).toLocaleDateString(locale, {
     ...(weekday ? { weekday: "short" as const } : {}),
     month: "short",
     day: "numeric",

@@ -1,13 +1,12 @@
 import { useRef, useState } from "react";
-import { Alert } from "react-native";
-import { SystemButton, SystemLabel, SystemPanel, SystemText as Text } from "@/components/system";
-import { ErrorText } from "@/components/ui";
+import { Alert, View } from "react-native";
 import { eraseLocalData, shareCsv } from "@/lib/data-files";
 import { useExercises } from "@/lib/exercise-store";
 import { useStore } from "@/lib/store";
+import { Button, Callout, ErrorText, ListRow, SettingsSection } from "@/vector";
 
 export function DataPanel() {
-  const { refresh } = useStore();
+  const { refresh, t } = useStore();
   const { byId } = useExercises();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -22,7 +21,7 @@ export function DataPanel() {
     try {
       await action();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "That didn't finish.");
+      setError(e instanceof Error ? e.message : t("didNotFinish"));
     } finally {
       locked.current = false;
       setBusy(false);
@@ -30,52 +29,50 @@ export function DataPanel() {
   }
   const name = (id: string) => byId(id).name;
   return (
-    <SystemPanel className="gap-3">
-      <SystemLabel>Your data</SystemLabel>
-      <SystemButton
-        variant="secondary"
-        isDisabled={busy}
-        onPress={() => void run(() => shareCsv("sets", name))}
-      >
-        Export sets as CSV
-      </SystemButton>
-      <SystemButton
-        variant="secondary"
-        isDisabled={busy}
-        onPress={() => void run(() => shareCsv("weight", name))}
-      >
-        Export body weight as CSV
-      </SystemButton>
-      <Text className="text-sm text-muted">
-        Readable in a spreadsheet, unencrypted, and not a restore format.
-      </Text>
-      <SystemButton
-        variant="danger-soft"
-        isDisabled={busy}
+    <View className="gap-3">
+      {/* Held while an export runs. */}
+      <SettingsSection eyebrow={t("yourData")} footnote={t("csvNote")}>
+        <ListRow
+          icon="share"
+          title={t("exportSetsCsv")}
+          trailing="none"
+          disabled={busy}
+          onPress={() => void run(() => shareCsv("sets", name))}
+        />
+        <ListRow
+          icon="share"
+          title={t("exportWeightCsv")}
+          trailing="none"
+          disabled={busy}
+          onPress={() => void run(() => shareCsv("weight", name))}
+        />
+      </SettingsSection>
+      <Button
+        variant="destructive"
+        icon="delete"
+        disabled={busy}
+        className="self-start"
         onPress={() =>
-          Alert.alert(
-            "Erase everything on this phone?",
-            "Deletes your workouts, programs, exercises, gyms, weights, settings and recovery backups. It can't be undone; save a backup first to keep them. Files you already shared and Apple Health or Health Connect records aren't touched.",
-            [
-              { text: "Cancel", style: "cancel" },
-              {
-                text: "Erase",
-                style: "destructive",
-                onPress: () =>
-                  void run(async () => {
-                    await eraseLocalData();
-                    refresh();
-                    setMessage("Erased. Health sync is off.");
-                  }),
-              },
-            ]
-          )
+          // vector: irreversible
+          Alert.alert(t("eraseQuestion"), t("eraseBody"), [
+            { text: t("cancel"), style: "cancel" },
+            {
+              text: t("erase"),
+              style: "destructive",
+              onPress: () =>
+                void run(async () => {
+                  await eraseLocalData();
+                  refresh();
+                  setMessage(t("erasedNote"));
+                }),
+            },
+          ])
         }
       >
-        Erase all data
-      </SystemButton>
-      {!!message && <Text accessibilityLiveRegion="polite">{message}</Text>}
+        {t("eraseAllData")}
+      </Button>
+      {!!message && <Callout tone="success">{message}</Callout>}
       <ErrorText message={error} />
-    </SystemPanel>
+    </View>
   );
 }

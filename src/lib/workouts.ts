@@ -23,6 +23,7 @@ import { defaultGym, type NewGym } from "./loads";
 import { localDay, type Units } from "./metrics";
 import { keptUp, prescribe, type PastSet } from "./progression";
 import { countsAsWork, e1rm } from "./strength";
+import { currentLanguage, interpolate, translate } from "./translations";
 
 /* Every write here is one small transaction, so a workout survives the app being killed
    between any two taps. Functions that remove data return an undo. */
@@ -645,7 +646,12 @@ export const restsAfter = (blocks: Pick<WorkoutExercise, "supersetGroup">[], ind
 
 /** What the rest after a set leads to: more of this exercise, else the next one. */
 export const restLabel = (block: ExerciseBlock, setId: number, name: string, nextName?: string) =>
-  `Next: ${block.sets.some((s) => s.id !== setId && !s.completedAt && s.kind !== "warmup") || !nextName ? name : nextName}`;
+  interpolate(translate(currentLanguage(), "restNext"), {
+    exercise:
+      block.sets.some((s) => s.id !== setId && !s.completedAt && s.kind !== "warmup") || !nextName
+        ? name
+        : nextName,
+  });
 
 /**
  * Checks a set off. Values not typed are taken from its targets, so a set done as
@@ -729,16 +735,25 @@ export function addSet(workoutExerciseId: number, kind: SetKind = "working") {
   return id;
 }
 
+/** Deletes a set; the returned Undo is a no-op once its exercise (or workout) is gone. */
 export function deleteSet(setId: number): () => void {
   const row = db.select().from(sets).where(eq(sets.id, setId)).get();
   db.delete(sets).where(eq(sets.id, setId)).run();
   return () => {
-    if (row) db.insert(sets).values(row).onConflictDoNothing().run();
+    if (!row) return;
+    // A late Undo must not throw a foreign-key error into the press handler.
+    const parent = db
+      .select({ id: workoutExercises.id })
+      .from(workoutExercises)
+      .where(eq(workoutExercises.id, row.workoutExerciseId))
+      .get();
+    if (parent) db.insert(sets).values(row).onConflictDoNothing().run();
   };
 }
 
 // ——— Exercises in a workout ———
 
+/** Removes an exercise and its sets; the returned Undo is a no-op once the workout is gone. */
 export function removeExercise(workoutExerciseId: number): () => void {
   const block = db
     .select()
@@ -749,6 +764,13 @@ export function removeExercise(workoutExerciseId: number): () => void {
   db.delete(workoutExercises).where(eq(workoutExercises.id, workoutExerciseId)).run();
   return () => {
     if (!block) return;
+    // The workout may be gone by the time Undo runs (discarded or deleted elsewhere): skip, don't throw.
+    const workout = db
+      .select({ id: workouts.id })
+      .from(workouts)
+      .where(eq(workouts.id, block.workoutId))
+      .get();
+    if (!workout) return;
     db.transaction((tx) => {
       tx.insert(workoutExercises).values(block).onConflictDoNothing().run();
       for (const row of rows) tx.insert(sets).values(row).onConflictDoNothing().run();

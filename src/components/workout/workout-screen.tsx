@@ -1,17 +1,16 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Alert, View } from "react-native";
-import { router, Stack } from "expo-router";
-import { SystemButton, SystemIconButton, SystemText as Text } from "@/components/system";
-import { ActionMenu, Editor, Field, Screen } from "@/components/ui";
+import { router, useFocusEffect } from "expo-router";
 import { ExercisePicker } from "@/components/exercises/exercise-picker";
 import { write, useQuery } from "@/lib/data";
 import { canDoAt, type Exercise } from "@/lib/exercises";
 import { useExercises } from "@/lib/exercise-store";
-import { adviceText, duration, rirText } from "@/lib/format";
+import { useLiftFormat } from "@/lib/format";
 import { isDeloadWeek, programDetail, swapInSession, undoAi, weekRir } from "@/lib/programs";
 import { stopRest } from "@/lib/rest-timer";
 import { syncHealthSoon } from "@/lib/health-schedule";
 import { useStore } from "@/lib/store";
+import { useCount } from "@/lib/use-count";
 import {
   activeWorkout,
   addExercise,
@@ -25,22 +24,43 @@ import {
   tidyWorkout,
   workoutDetail,
 } from "@/lib/workouts";
+import {
+  Button,
+  DetailScreen,
+  Editor,
+  Field,
+  Meta,
+  SystemState,
+  Text,
+  Value,
+  useKitFormat,
+  useKitStrings,
+  useUndo,
+} from "@/vector";
 import { ExerciseCard } from "./exercise-card";
 import { RestBar } from "./rest-bar";
 import { DescribeSheet } from "./describe-sheet";
 
-type Toast = { message: string; undo: () => void };
+/** Leaves the workout; opened from a link with nothing under it, it goes to the tabs instead. */
+const leave = () => (router.canGoBack() ? router.back() : router.replace("/"));
 
-/** Logs the open workout, or edits a finished one when given its id. */
+/**
+ * Logs the open workout, or edits a finished one when given its id. The kit's Undo stacks above the rest strip
+ * (DockProvider wraps the root Stack), so both stay in reach. It belongs to this screen: leaving it by any route,
+ * or the workout ending elsewhere, makes the last removal final.
+ */
 export function WorkoutScreen({ workoutId }: { workoutId?: number }) {
-  const { units } = useStore();
+  const { units, t } = useStore();
+  const strings = useKitStrings();
+  const format = useKitFormat();
+  const { adviceText, duration, rirText } = useLiftFormat();
+  const count = useCount();
+  const undo = useUndo();
   const { byId, settingFor } = useExercises();
   const [picker, setPicker] = useState<{ replacing?: number } | null>(null);
   const [renaming, setRenaming] = useState<string | null>(null);
   const [describing, setDescribing] = useState(false);
-  const [toast, setToast] = useState<Toast | null>(null);
   const [, setTick] = useState(0);
-  const toastTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   const { detail, gym } = useQuery(() => {
     const id = workoutId ?? activeWorkout()?.id;
@@ -71,55 +91,67 @@ export function WorkoutScreen({ workoutId }: { workoutId?: number }) {
   }, [detail?.mesoId, detail?.mesoWeek]);
   useEffect(() => {
     if (editingPast || !detail) return;
-    const timer = setInterval(() => setTick((t) => t + 1), 30000);
+    const timer = setInterval(() => setTick((n) => n + 1), 30000);
     return () => clearInterval(timer);
   }, [editingPast, detail]);
-  useEffect(() => () => clearTimeout(toastTimer.current), []);
 
-  const showUndo = (message: string, undo: () => void) => {
-    clearTimeout(toastTimer.current);
-    setToast({ message, undo });
-    toastTimer.current = setTimeout(() => setToast(null), 5000);
-  };
+  // The root DockProvider draws the Undo on whichever screen is focused, so drop it on blur (Back, a pushed
+  // exercise page, a tab) and once the workout is gone (finished on the Watch, deleted, restored over).
+  const dismissUndo = useRef(undo.dismiss);
+  useEffect(() => {
+    dismissUndo.current = undo.dismiss;
+  }, [undo]);
+  useFocusEffect(useCallback(() => () => dismissUndo.current(), []));
+  const missing = !detail;
+  useEffect(() => {
+    if (missing) dismissUndo.current();
+  }, [missing]);
 
   if (!detail) {
     return (
-      <Screen title="Workout">
-        <Stack.Screen options={{ headerShown: false }} />
-        <Text className="text-muted">No workout is open.</Text>
-        <SystemButton onPress={() => router.back()}>Back</SystemButton>
-      </Screen>
+      <DetailScreen title={t("workout")}>
+        <SystemState
+          kind="empty"
+          message={t("noWorkoutOpen")}
+          action={{ label: strings.back, onPress: leave }}
+        />
+      </DetailScreen>
     );
   }
 
   const open = detail.exercises.flatMap((b) => b.sets).filter((s) => !s.completedAt).length;
+  // Finish and Discard dismiss before they write and navigate, so the Undo never reaches the next screen.
   const finish = () => {
     if (editingPast) {
+      undo.dismiss();
       write(() => tidyWorkout(detail.id));
       void syncHealthSoon();
-      router.back();
+      leave();
       return;
     }
     const done = () => {
+      undo.dismiss();
       const id = write(() => finishWorkout(detail.id));
       stopRest();
       if (id) void syncHealthSoon();
       if (id)
         router.replace({ pathname: "/session/[id]", params: { id: String(id), finished: "1" } });
-      else router.back();
+      else leave();
     };
     if (!detail.exercises.some((b) => b.sets.some((s) => s.completedAt))) {
-      Alert.alert("Nothing logged", "Finish and discard this empty workout?", [
-        { text: "Keep going", style: "cancel" },
-        { text: "Discard", style: "destructive", onPress: done },
+      // vector: irreversible
+      Alert.alert(t("nothingLogged"), t("discardEmptyWorkout"), [
+        { text: t("keepGoing"), style: "cancel" },
+        { text: t("discard"), style: "destructive", onPress: done },
       ]);
     } else if (open) {
+      // vector: irreversible
       Alert.alert(
-        "Finish workout?",
-        `${open} unchecked ${open === 1 ? "set" : "sets"} will be left out.`,
+        t("finishWorkoutQuestion"),
+        count(open, "uncheckedSetLeftOut", "uncheckedSetsLeftOut"),
         [
-          { text: "Keep going", style: "cancel" },
-          { text: "Finish", onPress: done },
+          { text: t("keepGoing"), style: "cancel" },
+          { text: t("finish"), onPress: done },
         ]
       );
     } else done();
@@ -138,111 +170,90 @@ export function WorkoutScreen({ workoutId }: { workoutId?: number }) {
       write(() => replaceExercise(replacing, exercise));
       return;
     }
-    Alert.alert(`Swap to ${exercise.name}`, undefined, [
-      { text: "Cancel", style: "cancel" },
+    Alert.alert(t("swapTo", { name: exercise.name }), undefined, [
+      { text: t("cancel"), style: "cancel" },
       {
-        text: "Just today",
+        text: t("justToday"),
         onPress: () => write(() => swapInSession(replacing, exercise, false, context)),
       },
       {
-        text: "Rest of program",
+        text: t("restOfProgram"),
         onPress: () => write(() => swapInSession(replacing, exercise, true, context)),
       },
     ]);
   };
 
-  const header = (
-    <View className="flex-row items-center gap-1">
-      <SystemIconButton
-        icon="chevron-back"
-        accessibilityLabel="Back"
-        onPress={() => router.back()}
-      />
-      <View className="flex-1">
-        <Text className="text-lg font-semibold" numberOfLines={1}>
-          {detail.name || "Workout"}
-        </Text>
-        <Text className="font-mono text-xs text-muted">
-          {[
-            program
-              ? `${program.deload ? "Deload" : `Week ${(detail.mesoWeek ?? 0) + 1}`} · ${rirText(program.rir)}`
-              : "",
-            detail.travel && gym ? `At ${gym.name}` : "",
-            editingPast ? "Editing" : duration(detail.startedAt),
-          ]
-            .filter(Boolean)
-            .join(" · ")}
-        </Text>
-      </View>
-      <ActionMenu
-        accessibilityLabel="Workout options"
-        sections={[
-          {
-            actions: [
-              {
-                key: "rename",
-                label: "Rename",
-                icon: "pencil",
-                onPress: () => setRenaming(detail.name),
-              },
-              ...(editingPast
-                ? []
-                : [
-                    {
-                      key: "discard",
-                      label: "Discard workout",
-                      icon: "trash-outline" as const,
-                      destructive: true,
-                      onPress: () =>
-                        Alert.alert("Discard workout?", "Everything logged in it is deleted.", [
-                          { text: "Cancel", style: "cancel" },
-                          {
-                            text: "Discard",
-                            style: "destructive",
-                            onPress: () => {
-                              write(() => discardWorkout(detail.id));
-                              stopRest();
-                              router.back();
-                            },
-                          },
-                        ]),
-                    },
-                  ]),
-            ],
-          },
-        ]}
-      />
-      <SystemButton onPress={finish} className="px-4">
-        {editingPast ? "Done" : "Finish"}
-      </SystemButton>
-    </View>
-  );
-
-  const footer = (
-    <View className="gap-2">
-      {toast && (
-        <View className="flex-row items-center gap-3 rounded-2xl bg-foreground px-4 py-2">
-          <Text className="flex-1 text-background">{toast.message}</Text>
-          <SystemButton
-            variant="ghost"
-            labelClassName="text-accent"
-            onPress={() => {
-              toast.undo();
-              setToast(null);
-            }}
-          >
-            Undo
-          </SystemButton>
-        </View>
-      )}
-      {!editingPast && <RestBar />}
-    </View>
-  );
+  const discard = () => {
+    // vector: irreversible
+    Alert.alert(t("discardWorkoutQuestion"), t("discardWorkoutBody"), [
+      { text: t("cancel"), style: "cancel" },
+      {
+        text: t("discard"),
+        style: "destructive",
+        onPress: () => {
+          undo.dismiss();
+          write(() => discardWorkout(detail.id));
+          stopRest();
+          leave();
+        },
+      },
+    ]);
+  };
 
   return (
     <>
-      <Stack.Screen options={{ headerShown: false, gestureEnabled: true }} />
-      <Screen title="Workout" header={header} footer={footer} compact>
+      <DetailScreen
+        title={detail.name || t("workout")}
+        action={{
+          icon: "check",
+          accessibilityLabel: editingPast ? strings.done : t("finishWorkout"),
+          onPress: finish,
+        }}
+        menu={{
+          accessibilityLabel: t("workoutOptions"),
+          sections: [
+            {
+              actions: [
+                {
+                  key: "rename",
+                  label: t("rename"),
+                  icon: "edit",
+                  onPress: () => setRenaming(detail.name),
+                },
+                ...(editingPast
+                  ? []
+                  : [
+                      {
+                        key: "discard",
+                        label: t("discardWorkout"),
+                        icon: "delete" as const,
+                        destructive: true,
+                        onPress: discard,
+                      },
+                    ]),
+              ],
+            },
+          ],
+        }}
+        footer={editingPast ? undefined : <RestBar />}
+        compact
+      >
+        {/* The title is in the native bar; the program week, gym and the live duration lead the content. */}
+        <View className="flex-row flex-wrap items-center justify-between gap-x-3 gap-y-1">
+          <Meta
+            items={[
+              program
+                ? program.deload
+                  ? t("deload")
+                  : t("weekN", { n: format.number((detail.mesoWeek ?? 0) + 1) })
+                : "",
+              program ? rirText(program.rir) : "",
+              detail.travel && gym ? t("atGym", { gym: gym.name }) : "",
+              editingPast ? t("editing") : "",
+            ]}
+          />
+          {!editingPast && <Value size="xs" tone="muted" value={duration(detail.startedAt)} />}
+        </View>
         {detail.exercises.map((block, index) => {
           const exercise = byId(block.exerciseId);
           // Past sessions may predate a permanent swap, so only the open one names its plan.
@@ -277,39 +288,30 @@ export function WorkoutScreen({ workoutId }: { workoutId?: number }) {
                   ? byId(detail.exercises[index + 1].exerciseId).name
                   : undefined
               }
-              onUndo={showUndo}
+              onUndo={(message, onUndo) => undo.show({ message, onUndo })}
             />
           );
         })}
-        {!detail.exercises.length && (
-          <Text className="py-6 text-center text-muted">
-            Add your first exercise. Sets fill in from last time.
-          </Text>
-        )}
+        {!detail.exercises.length && <Text tone="muted">{t("addFirstExercise")}</Text>}
         <View className="flex-row gap-2">
-          <SystemButton
+          <Button variant="secondary" icon="add" className="flex-1" onPress={() => setPicker({})}>
+            {t("addExercise")}
+          </Button>
+          <Button
             variant="secondary"
-            icon="add"
-            className="flex-1"
-            onPress={() => setPicker({})}
-          >
-            Add exercise
-          </SystemButton>
-          <SystemButton
-            variant="secondary"
-            icon="mic-outline"
+            icon="mic"
             className="flex-1"
             onPress={() => setDescribing(true)}
           >
-            Type or say
-          </SystemButton>
+            {t("typeOrSay")}
+          </Button>
         </View>
-      </Screen>
+      </DetailScreen>
       <ExercisePicker
         open={!!picker}
         close={() => setPicker(null)}
         onPick={pick}
-        title={picker?.replacing ? "Swap exercise" : "Add exercise"}
+        title={picker?.replacing ? t("swapExercise") : t("addExercise")}
         replacing={
           picker?.replacing
             ? byId(detail.exercises.find((b) => b.id === picker.replacing)?.exerciseId ?? "")
@@ -319,25 +321,23 @@ export function WorkoutScreen({ workoutId }: { workoutId?: number }) {
       />
       <DescribeSheet open={describing} close={() => setDescribing(false)} workoutId={detail.id} />
       <Editor
-        title="Rename workout"
+        title={t("renameWorkout")}
         open={renaming !== null}
         close={() => setRenaming(null)}
-        footer={
-          <SystemButton
-            onPress={() => {
-              write(() => renameWorkout(detail.id, renaming ?? ""));
-              setRenaming(null);
-            }}
-          >
-            Save
-          </SystemButton>
-        }
+        dirty={renaming !== null && renaming !== detail.name}
+        primary={{
+          label: strings.save,
+          onPress: () => {
+            write(() => renameWorkout(detail.id, renaming ?? ""));
+            setRenaming(null);
+          },
+        }}
       >
         <Field
-          label="Name"
+          label={t("name")}
           value={renaming ?? ""}
           onChange={setRenaming}
-          placeholder="Push, Upper A, Legs…"
+          placeholder={t("workoutNamePlaceholder")}
           autoFocus
         />
       </Editor>

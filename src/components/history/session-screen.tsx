@@ -1,23 +1,16 @@
 import { useMemo } from "react";
 import { Alert, View } from "react-native";
-import { router, Stack } from "expo-router";
-import { useThemeColor } from "heroui-native";
-import {
-  SystemButton,
-  SystemIcon,
-  SystemLabel,
-  SystemPanel,
-  SystemText as Text,
-} from "@/components/system";
-import { Screen } from "@/components/ui";
+import { router } from "expo-router";
 import { syncHealthSoon } from "@/lib/health-schedule";
 import { MuscleFeedback } from "./muscle-feedback";
 import { SessionNote } from "./session-note";
 import { write, useQuery } from "@/lib/data";
 import { useExercises } from "@/lib/exercise-store";
-import { dayLabel, duration, estimateText, loadText, setText, totalText } from "@/lib/format";
+import { massUnit, useLiftFormat } from "@/lib/format";
+import { fromKg } from "@/lib/metrics";
 import { useStore } from "@/lib/store";
 import { countsAsWork } from "@/lib/strength";
+import { useCount } from "@/lib/use-count";
 import {
   activeWorkout,
   discardWorkout,
@@ -26,12 +19,14 @@ import {
   workoutDetail,
   workoutRecords,
 } from "@/lib/workouts";
+import { Button, DetailScreen, ListRow, Panel, Status, Text, Value, useKitFormat } from "@/vector";
 
 export function SessionScreen({ id, finished }: { id: number; finished: boolean }) {
-  const { units, locale } = useStore();
+  const { units, t } = useStore();
+  const { dayLabel, duration, estimateText, loadText, setText } = useLiftFormat();
+  const format = useKitFormat();
+  const count = useCount();
   const { byId } = useExercises();
-  const background = useThemeColor("background");
-  const foreground = useThemeColor("foreground");
   const detail = useQuery(() => {
     return workoutDetail(id);
   }, [id]);
@@ -39,51 +34,46 @@ export function SessionScreen({ id, finished }: { id: number; finished: boolean 
   if (!detail) return null;
   const work = detail.exercises.flatMap((b) => b.sets).filter((s) => countsAsWork(s.kind));
   const volume = work.reduce((sum, s) => sum + (s.weightKg ?? 0) * (s.reps ?? 0), 0);
-  const title = detail.name || "Workout";
   const show = (kind: "e1rm" | "weight", kg: number) =>
     kind === "e1rm" ? estimateText(kg, units) : loadText(kg, units);
+  const badge = (kind: string, i: number) =>
+    kind === "warmup"
+      ? t("setKindWarmupShort")
+      : kind === "drop"
+        ? t("setKindDropShort")
+        : kind === "myo"
+          ? t("setKindMyoShort")
+          : format.number(i + 1);
   return (
-    <Screen title={title} nativeHeader>
-      <Stack.Screen
-        options={{
-          headerShown: true,
-          title: finished ? "Workout done" : dayLabel(detail.startedAt, locale),
-          headerBackButtonDisplayMode: "minimal",
-          headerStyle: { backgroundColor: background },
-          headerTintColor: foreground,
-          contentStyle: { backgroundColor: background },
-        }}
-      />
-      <View className="flex-row gap-3">
-        {[
-          ["Time", duration(detail.startedAt, detail.endedAt)],
-          ["Sets", String(work.length)],
-          ["Volume", totalText(volume, units)],
-        ].map(([label, value]) => (
-          <SystemPanel key={label} className="flex-1 gap-1 p-4">
-            <SystemLabel>{label}</SystemLabel>
-            <Text className="font-mono text-lg" numberOfLines={1} adjustsFontSizeToFit>
-              {value}
-            </Text>
-          </SystemPanel>
-        ))}
-      </View>
+    <DetailScreen title={finished ? t("workoutDone") : dayLabel(detail.startedAt)}>
+      <Panel inset="none">
+        <ListRow
+          title={t("time")}
+          value={<Value value={duration(detail.startedAt, detail.endedAt)} />}
+        />
+        <ListRow title={t("sets")} value={<Value value={format.number(work.length)} />} />
+        <ListRow
+          title={t("volume")}
+          value={
+            <Value {...format.unitParts(Math.round(fromKg(volume, units)), massUnit(units))} />
+          }
+        />
+      </Panel>
 
       {records.length > 0 && (
-        <SystemPanel className="gap-2 bg-success-soft">
-          <View className="flex-row items-center gap-2">
-            <SystemIcon name="trophy" color="success" />
-            <Text className="font-semibold text-success-soft-foreground">
-              {records.length === 1 ? "New record" : `${records.length} new records`}
-            </Text>
-          </View>
+        <Panel>
+          <Status state="ok" label={count(records.length, "newRecordCountOne", "newRecordCount")} />
           {records.map((r) => (
-            <Text key={`${r.exerciseId}-${r.kind}`} className="text-sm">
-              {byId(r.exerciseId).name}: {r.kind === "e1rm" ? "est. 1RM" : "heaviest"}{" "}
-              {show(r.kind, r.valueKg)} (was {show(r.kind, r.previousKg)})
+            <Text key={`${r.exerciseId}-${r.kind}`} variant="small">
+              {t("recordLine", {
+                name: byId(r.exerciseId).name,
+                kind: t(r.kind === "e1rm" ? "recordKindE1rm" : "recordKindHeaviest"),
+                value: show(r.kind, r.valueKg),
+                previous: show(r.kind, r.previousKg),
+              })}
             </Text>
           ))}
-        </SystemPanel>
+        </Panel>
       )}
 
       {detail.mesoId !== null && !detail.deload && <MuscleFeedback detail={detail} />}
@@ -91,48 +81,52 @@ export function SessionScreen({ id, finished }: { id: number; finished: boolean 
       <SessionNote key={detail.id} detail={detail} />
 
       {detail.exercises.map((block) => (
-        <View key={block.id} className="gap-1">
-          <Text className="font-semibold">{byId(block.exerciseId).name}</Text>
-          {block.sets.map((s, i) => (
-            <Text key={s.id} className="font-mono text-sm text-muted">
-              {s.kind === "warmup" ? "W" : s.kind === "drop" ? "D" : s.kind === "myo" ? "M" : i + 1}
-              {"  "}
-              {setText(s, units)}
-            </Text>
-          ))}
-        </View>
+        <Panel key={block.id}>
+          <Panel.Title>{byId(block.exerciseId).name}</Panel.Title>
+          <View className="gap-1">
+            {block.sets.map((s, i) => (
+              <View key={s.id} className="flex-row gap-3">
+                <Text variant="readoutS" tone="muted" className="min-w-6">
+                  {badge(s.kind, i)}
+                </Text>
+                <Value tone="muted" value={setText(s, units)} />
+              </View>
+            ))}
+          </View>
+        </Panel>
       ))}
 
       <View className="gap-2">
         {detail.mesoId === null && (
-          <SystemButton
+          <Button
             variant="secondary"
-            icon="repeat"
-            isDisabled={!!activeWorkout()}
+            icon="play"
+            disabled={!!activeWorkout()}
             onPress={() => {
               const { gym, travel } = trainingGym(units, detail.gymId);
               write(() => startWorkout({ gymId: gym.id, travel, from: detail.id }));
               router.replace("/workout");
             }}
           >
-            Repeat this workout
-          </SystemButton>
+            {t("repeatThisWorkout")}
+          </Button>
         )}
-        <SystemButton
+        <Button
           variant="ghost"
-          icon="pencil"
+          icon="edit"
           onPress={() => router.push({ pathname: "/workout", params: { id: String(detail.id) } })}
         >
-          Edit
-        </SystemButton>
-        <SystemButton
-          variant="danger-soft"
-          icon="trash-outline"
+          {t("edit")}
+        </Button>
+        <Button
+          variant="destructive"
+          icon="delete"
           onPress={() =>
-            Alert.alert("Delete workout?", "This can't be undone.", [
-              { text: "Cancel", style: "cancel" },
+            // vector: irreversible
+            Alert.alert(t("deleteWorkoutQuestion"), t("cannotBeUndone"), [
+              { text: t("cancel"), style: "cancel" },
               {
-                text: "Delete",
+                text: t("delete"),
                 style: "destructive",
                 onPress: () => {
                   write(() => discardWorkout(detail.id));
@@ -143,9 +137,9 @@ export function SessionScreen({ id, finished }: { id: number; finished: boolean 
             ])
           }
         >
-          Delete workout
-        </SystemButton>
+          {t("deleteWorkout")}
+        </Button>
       </View>
-    </Screen>
+    </DetailScreen>
   );
 }

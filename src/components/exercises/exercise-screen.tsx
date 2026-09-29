@@ -1,14 +1,11 @@
 import { useState } from "react";
-import { Pressable, View } from "react-native";
-import { router, Stack } from "expo-router";
-import { Switch, useThemeColor } from "heroui-native";
-import { SystemButton, SystemLabel, SystemPanel, SystemText as Text } from "@/components/system";
-import { Screen, SettingsSelect } from "@/components/ui";
+import { View } from "react-native";
+import { router } from "expo-router";
 import { useQuery } from "@/lib/data";
 import { equipmentLabels, muscleLabels } from "@/lib/exercises";
 import type { Muscle } from "@/lib/exercises/types";
 import { archiveCustomExercise, saveExerciseSetting, useExercises } from "@/lib/exercise-store";
-import { dayLabel, estimateText, setText } from "@/lib/format";
+import { useLiftFormat } from "@/lib/format";
 import { defaultRest, formatClock } from "@/lib/rest-timer";
 import { useStore } from "@/lib/store";
 import { countsAsWork, e1rm } from "@/lib/strength";
@@ -16,14 +13,27 @@ import { exerciseHistory } from "@/lib/workouts";
 import { CustomExerciseEditor } from "./custom-exercise-editor";
 import { StrengthChart } from "@/components/progress/strength-chart";
 import { strengthSeries } from "@/lib/analytics";
+import {
+  Button,
+  DetailScreen,
+  Label,
+  ListRow,
+  Meta,
+  Note,
+  Panel,
+  Select,
+  SystemState,
+  Text,
+  useKitFormat,
+} from "@/vector";
 
 const restChoices = ["default", "60", "90", "120", "150", "180", "240", "300"] as const;
 
 export function ExerciseScreen({ id }: { id: string }) {
-  const { units, locale } = useStore();
+  const { units, t } = useStore();
+  const { dayLabel, estimateText, setList, setText } = useLiftFormat();
+  const format = useKitFormat();
   const { byId, settingFor } = useExercises();
-  const background = useThemeColor("background");
-  const foreground = useThemeColor("foreground");
   const [editing, setEditing] = useState(false);
   const exercise = byId(id);
   const setting = settingFor(id);
@@ -41,123 +51,116 @@ export function ExerciseScreen({ id }: { id: string }) {
   const rest = setting?.restSeconds ? String(setting.restSeconds) : "default";
 
   return (
-    <Screen title={exercise.name} nativeHeader>
-      <Stack.Screen
-        options={{
-          headerShown: true,
-          title: exercise.name,
-          headerBackButtonDisplayMode: "minimal",
-          headerStyle: { backgroundColor: background },
-          headerTintColor: foreground,
-          contentStyle: { backgroundColor: background },
-        }}
-      />
+    <DetailScreen title={exercise.name}>
       <View className="gap-1">
-        <Text className="text-muted">
-          {equipmentLabels[exercise.equipment]}
-          {exercise.unilateral ? " · one side at a time" : ""} · {exercise.reps[0]}–
-          {exercise.reps[1]} reps
-        </Text>
+        <Meta
+          items={[
+            equipmentLabels[exercise.equipment],
+            exercise.unilateral ? t("oneSideAtATime") : "",
+            t("repRange", { range: format.range(exercise.reps[0], exercise.reps[1]) }),
+          ]}
+        />
         <Text>
-          {muscles
-            .sort((a, b) => b[1] - a[1])
-            .map(([m, w]) => `${muscleLabels[m]}${w === 0.5 ? " (½)" : ""}`)
-            .join(", ")}
+          {format.list(
+            muscles
+              .sort((a, b) => b[1] - a[1])
+              .map(([m, w]) =>
+                w === 0.5 ? t("muscleHalf", { muscle: muscleLabels[m] }) : muscleLabels[m]
+              )
+          )}
         </Text>
-        {!!exercise.cue && <Text className="pt-2 text-muted">{exercise.cue}</Text>}
+        {!!exercise.cue && (
+          <Text tone="muted" className="pt-2">
+            {exercise.cue}
+          </Text>
+        )}
       </View>
 
       {best && (
-        <SystemPanel className="gap-3">
+        <Panel>
           <StrengthChart series={strength} name={exercise.name} />
-          <Text className="text-sm text-muted">
-            Best ever {estimateText(best.value, units)} · {dayLabel(best.day, locale)}
-          </Text>
-        </SystemPanel>
+          <Note>
+            {t("bestEver", {
+              value: estimateText(best.value, units),
+              day: dayLabel(best.day),
+            })}
+          </Note>
+        </Panel>
       )}
 
-      <SystemPanel className="gap-4">
-        <View className="flex-row items-center justify-between">
-          <Text>Favorite</Text>
-          <Switch
-            accessibilityLabel="Favorite"
-            isSelected={!!setting?.favorite}
-            onSelectedChange={(favorite) => saveExerciseSetting(id, { favorite })}
-          />
-        </View>
-        <View className="gap-1">
-          <View className="flex-row items-center justify-between">
-            <Text>Avoid</Text>
-            <Switch
-              accessibilityLabel="Avoid"
-              isSelected={!!setting?.avoid}
-              onSelectedChange={(avoid) => saveExerciseSetting(id, { avoid })}
-            />
-          </View>
-          <Text className="text-sm text-muted">
-            Left out of swap suggestions, e.g. when it hurts.
-          </Text>
-        </View>
-        <View className="gap-2">
-          <SystemLabel>Rest after a set</SystemLabel>
-          <SettingsSelect
-            title="Rest"
-            values={restChoices}
-            value={
-              restChoices.includes(rest as never)
-                ? (rest as (typeof restChoices)[number])
-                : "default"
-            }
-            onChange={(value) =>
-              saveExerciseSetting(id, { restSeconds: value === "default" ? null : Number(value) })
-            }
-            label={(value) =>
-              value === "default"
-                ? `Default (${formatClock(defaultRest(exercise))})`
-                : formatClock(Number(value))
-            }
-          />
-        </View>
-      </SystemPanel>
+      <Panel inset="none">
+        <ListRow
+          title={t("favorite")}
+          trailing="toggle"
+          toggleValue={!!setting?.favorite}
+          onToggle={(favorite) => saveExerciseSetting(id, { favorite })}
+        />
+        <ListRow
+          title={t("avoid")}
+          description={t("avoidHint")}
+          trailing="toggle"
+          toggleValue={!!setting?.avoid}
+          onToggle={(avoid) => saveExerciseSetting(id, { avoid })}
+        />
+      </Panel>
 
       <View className="gap-2">
-        <SystemLabel>History</SystemLabel>
-        {!history.length && <Text className="text-muted">Not done yet.</Text>}
-        {history.map((p) => (
-          <Pressable
-            key={p.block.id}
-            accessibilityRole="button"
-            onPress={() =>
-              router.push({ pathname: "/session/[id]", params: { id: String(p.workoutId) } })
-            }
-            className="gap-1 border-b border-separator py-2 active:opacity-60"
-          >
-            <Text className="text-sm font-medium">{dayLabel(p.startedAt, locale)}</Text>
-            <Text className="font-mono text-sm text-muted">
-              {p.sets
-                .filter((s) => countsAsWork(s.kind))
-                .map((s) => setText(s, units))
-                .join(",  ")}
-            </Text>
-          </Pressable>
-        ))}
+        <Label accessibilityRole="header">{t("restAfterSet")}</Label>
+        <Select
+          title={t("restAfterSet")}
+          values={restChoices}
+          value={
+            restChoices.includes(rest as never) ? (rest as (typeof restChoices)[number]) : "default"
+          }
+          onChange={(value) =>
+            saveExerciseSetting(id, { restSeconds: value === "default" ? null : Number(value) })
+          }
+          label={(value) =>
+            value === "default"
+              ? t("restDefault", { time: formatClock(defaultRest(exercise)) })
+              : formatClock(Number(value))
+          }
+        />
       </View>
+
+      {history.length ? (
+        <Panel inset="none">
+          <Panel.Header eyebrow={t("history")} />
+          {history.map((p) => (
+            <ListRow
+              key={p.block.id}
+              title={dayLabel(p.startedAt)}
+              description={setList(
+                p.sets.filter((s) => countsAsWork(s.kind)).map((s) => setText(s, units))
+              )}
+              onPress={() =>
+                router.push({ pathname: "/session/[id]", params: { id: String(p.workoutId) } })
+              }
+            />
+          ))}
+        </Panel>
+      ) : (
+        <Panel>
+          <Panel.Header eyebrow={t("history")} />
+          <SystemState kind="empty" message={t("notDoneYet")} />
+        </Panel>
+      )}
 
       {exercise.custom && (
         <View className="gap-2">
-          <SystemButton variant="secondary" icon="pencil" onPress={() => setEditing(true)}>
-            Edit exercise
-          </SystemButton>
-          <SystemButton
+          <Button variant="secondary" icon="edit" onPress={() => setEditing(true)}>
+            {t("editExercise")}
+          </Button>
+          <Button
             variant="ghost"
-            icon={exercise.archived ? "arrow-undo" : "archive-outline"}
+            icon={exercise.archived ? "undo" : undefined}
             onPress={() => archiveCustomExercise(id, !exercise.archived)}
           >
-            {exercise.archived ? "Restore" : "Archive"}
-          </SystemButton>
+            {t(exercise.archived ? "restoreExercise" : "archiveExercise")}
+          </Button>
         </View>
       )}
       <CustomExerciseEditor open={editing} close={() => setEditing(false)} editing={exercise} />
-    </Screen>
+    </DetailScreen>
   );
 }

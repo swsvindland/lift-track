@@ -1,31 +1,53 @@
-import { useState } from "react";
-import { Switch } from "heroui-native";
-import { Platform, Pressable, View } from "react-native";
+import { useState, type ReactNode } from "react";
+import { Platform, View } from "react-native";
 import { router } from "expo-router";
-import { SystemIcon, SystemLabel, SystemPanel, SystemText as Text } from "@/components/system";
-import { SettingsSelect, ErrorText, Screen } from "@/components/ui";
 import { BackupPanel } from "@/components/settings/backup-panel";
 import { DataPanel } from "@/components/settings/data-panel";
+import { massUnit } from "@/lib/format";
 import { useStore } from "@/lib/store";
-import { languages, type LanguagePreference } from "@/lib/translations";
+import { isMessage, languages, type LanguagePreference, type Message } from "@/lib/translations";
 import { enableHealthSync, disableHealthSync } from "@/lib/health-schedule";
 import { useQuery, write } from "@/lib/data";
 import { activeGym, listGyms, travelPlan, updateGym } from "@/lib/workouts";
 import { convertGym } from "@/lib/loads";
+import {
+  Callout,
+  Choices,
+  ErrorText,
+  Label,
+  ListRow,
+  Note,
+  Panel,
+  Screen,
+  Select,
+  SettingsSection,
+  Text,
+  useKitFormat,
+} from "@/vector";
 
-function Row({ label, value, onPress }: { label: string; value?: string; onPress: () => void }) {
+/**
+ * The SettingsSection anatomy (eyebrow, content, footnote) for groups a row panel does not fit: a control that
+ * draws its own edge (Choices, Select), or notes that must be read before a row.
+ */
+function Section({
+  eyebrow,
+  footnote,
+  children,
+}: {
+  eyebrow: string;
+  footnote?: string;
+  children: ReactNode;
+}) {
   return (
-    <Pressable
-      accessibilityRole="button"
-      onPress={onPress}
-      className="min-h-11 flex-row items-center justify-between gap-3 active:opacity-60"
-    >
-      <Text>{label}</Text>
-      <View className="flex-row items-center gap-1">
-        {value && <Text className="text-muted">{value}</Text>}
-        <SystemIcon name="chevron-forward" size={18} color="muted" />
-      </View>
-    </Pressable>
+    <View className="gap-2">
+      <Label accessibilityRole="header">{eyebrow}</Label>
+      {children}
+      {footnote ? (
+        <Text variant="caption" tone="muted">
+          {footnote}
+        </Text>
+      ) : null}
+    </View>
   );
 }
 
@@ -42,10 +64,11 @@ export function SettingsScreen() {
     t,
     date,
   } = useStore();
+  const format = useKitFormat();
   const gyms = useQuery(() => ({ main: activeGym(units), trip: travelPlan() }), [units]);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
-  const [message, setMessage] = useState("");
+  const [error, setError] = useState<Message | "">("");
+  const [message, setMessage] = useState<Message | "">("");
   function preference(key: string, value: string) {
     try {
       setPreference(key, value);
@@ -67,31 +90,27 @@ export function SettingsScreen() {
         await disableHealthSync();
       }
     } catch (error) {
-      setError(
-        error instanceof Error && ["healthUnavailable", "syncing"].includes(error.message)
-          ? error.message
-          : "syncFailed"
-      );
+      const reason = error instanceof Error ? error.message : "";
+      setError(reason === "healthUnavailable" || reason === "syncing" ? reason : "syncFailed");
     } finally {
       refresh();
       setBusy(false);
     }
   }
+  // The last background sync's failure is stored as a message key.
+  const syncError = error || (isMessage(healthSyncError) ? healthSyncError : "");
   return (
-    <Screen title={t("settings")}>
-      <SystemPanel className="gap-3">
-        <SystemLabel>Training</SystemLabel>
-        <Row
-          label="Gyms"
-          value={gyms.trip ? `Traveling · ${gyms.trip.gym.name}` : gyms.main.name}
+    <Screen title={t("settings")} width="form">
+      <SettingsSection eyebrow={t("training")}>
+        <ListRow
+          title={t("gyms")}
+          value={gyms.trip ? t("travelingAtGym", { gym: gyms.trip.gym.name }) : gyms.main.name}
           onPress={() => router.push("/gyms")}
         />
-        <Row label={t("weight")} onPress={() => router.push("/weight")} />
-      </SystemPanel>
-      <SystemPanel className="gap-3">
-        <SystemLabel>{t("units")}</SystemLabel>
-        <SettingsSelect
-          title={t("units")}
+        <ListRow title={t("weight")} onPress={() => router.push("/weight")} />
+      </SettingsSection>
+      <Section eyebrow={t("units")}>
+        <Choices
           values={["metric", "imperial"] as const}
           value={units}
           onChange={(value) => {
@@ -103,62 +122,59 @@ export function SettingsScreen() {
                 if (gym.unit !== unit) updateGym(gym.id, convertGym(gym, unit));
             });
           }}
-          label={(value) => `${t(value)} · ${value === "metric" ? "kg" : "lb"}`}
+          // The same unit symbols the readouts use (公斤 in zh).
+          label={(value) =>
+            t("unitsWithSymbol", {
+              name: t(value),
+              unit: format.unitParts(2, massUnit(value)).unit,
+            })
+          }
+          accessibilityLabel={t("units")}
         />
-      </SystemPanel>
-      <SystemPanel className="gap-3">
-        <SystemLabel>{t("theme")}</SystemLabel>
-        <SettingsSelect
-          title={t("theme")}
-          values={["dark", "light", "system"] as const}
+      </Section>
+      <Section eyebrow={t("appearance")}>
+        <Choices
+          values={["system", "light", "dark"] as const}
           value={theme}
           onChange={(value) => preference("theme", value)}
           label={t}
+          accessibilityLabel={t("appearance")}
         />
-      </SystemPanel>
-      <SystemPanel className="gap-3">
-        <SystemLabel>{t("language")}</SystemLabel>
-        <SettingsSelect
+      </Section>
+      <Section eyebrow={t("language")}>
+        <Select
           title={t("language")}
           values={["system", ...Object.keys(languages)] as LanguagePreference[]}
           value={languagePreference}
           onChange={(value) => preference("language", value)}
           label={(value) => (value === "system" ? t("system") : languages[value])}
         />
-      </SystemPanel>
-      <SystemPanel className="gap-3">
-        <SystemLabel>{Platform.OS === "ios" ? "Apple Health" : "Health Connect"}</SystemLabel>
-        <Text className="text-muted">{t("healthPrivacy")}</Text>
-        {lastSync && (
-          <Text className="text-sm text-muted">
-            {t("lastSync")}: {date(lastSync)}
-          </Text>
-        )}
-        <View className="flex-row items-center justify-between gap-4">
-          <Text className="flex-1">{t(busy ? "syncing" : "sync")}</Text>
-          <Switch
-            accessibilityLabel={t("sync")}
-            isSelected={healthSyncEnabled}
-            isDisabled={busy}
-            onSelectedChange={toggleSync}
-          />
-        </View>
-        <Text className="text-sm text-muted">{t("syncSchedule")}</Text>
-        {message && (
-          <Text
-            accessibilityLiveRegion="polite"
-            className="border-l-2 border-success pl-3 text-success"
-          >
-            {t(message)}
-          </Text>
-        )}
-      </SystemPanel>
-      <ErrorText message={error || healthSyncError ? t(error || healthSyncError) : ""} />
+      </Section>
+      <View className="gap-3">
+        {/* What syncs is read before the switch that starts it. */}
+        <Section
+          eyebrow={t(Platform.OS === "ios" ? "appleHealth" : "healthConnect")}
+          footnote={t("syncSchedule")}
+        >
+          <Text tone="muted">{t("healthPrivacy")}</Text>
+          {/* Held while a sync or permission request runs. */}
+          <Panel inset="none">
+            <ListRow
+              title={t(busy ? "syncing" : "sync")}
+              description={lastSync ? t("lastSyncAt", { date: date(lastSync) }) : undefined}
+              trailing="toggle"
+              toggleValue={healthSyncEnabled}
+              onToggle={(enabled) => void toggleSync(enabled)}
+              disabled={busy}
+            />
+          </Panel>
+        </Section>
+        {message ? <Callout tone="success">{t(message)}</Callout> : null}
+        <ErrorText message={syncError ? t(syncError) : ""} />
+      </View>
       <BackupPanel />
       <DataPanel />
-      <Text className="text-center text-sm text-muted">
-        Vector Lift keeps everything on this phone. No account, no servers.
-      </Text>
+      <Note className="text-center">{t("localOnlyNote")}</Note>
     </Screen>
   );
 }

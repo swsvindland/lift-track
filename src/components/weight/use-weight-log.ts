@@ -2,16 +2,23 @@ import { useState } from "react";
 import { Alert } from "react-native";
 import { eq } from "drizzle-orm";
 import { db, healthLinks, weightEntries } from "@/db";
+import { massUnit, useLiftFormat } from "@/lib/format";
 import { useStore } from "@/lib/store";
-import { dayOf, fromKg, localDay, parseNumber, toKg, validDay, weightUnit } from "@/lib/metrics";
+import { dayOf, fromKg, localDay, toKg, validDay } from "@/lib/metrics";
+import { parseDecimal, useKitFormat } from "@/vector";
 
 type RecordRow = { id: number; measuredAt: string; values: Record<string, number> };
+type Form = { day: string; inputs: Record<string, string> };
 export function useWeightLog() {
-  const { weights, units, t, number, refresh } = useStore();
+  const { weights, units, t, refresh } = useStore();
+  const { weightText } = useLiftFormat();
+  const format = useKitFormat();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<RecordRow | null>(null);
   const [inputs, setInputs] = useState<Record<string, string>>({});
   const [day, setDay] = useState(localDay());
+  // The form as it opened: what `dirty` compares against, and what an untouched field still reads.
+  const [initial, setInitial] = useState<Form>({ day: localDay(), inputs: {} });
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [limit, setLimit] = useState(30);
@@ -20,10 +27,22 @@ export function useWeightLog() {
     measuredAt: w.measuredAt,
     values: { weight: w.weightKg },
   }));
-  const fields = ["weight"];
-  const unit = weightUnit(units);
+  const fields = ["weight"] as const;
+  /** The field suffix: the locale's own symbol for the unit. */
+  const unit = format.unitParts(2, massUnit(units)).unit;
   const display = (_key: string, value: number) => fromKg(value, units);
-  const format = (key: string, value: number) => `${number(display(key, value))} ${unit}`;
+  /** A stored weight as Value parts, one decimal always so a column of weights lines up. */
+  const reading = (key: string, value: number) => ({
+    ...format.unitParts(display(key, value), massUnit(units), 1),
+    value: format.number(display(key, value), 1),
+  });
+  /** Field text in the locale's digits and decimal mark (72,5 in de); parseDecimal reads it back. */
+  const seed = (value: number) => format.number(value, Number.isInteger(value) ? 0 : 1);
+  const dirty =
+    day !== initial.day ||
+    Object.keys({ ...initial.inputs, ...inputs }).some(
+      (key) => (inputs[key] ?? "") !== (initial.inputs[key] ?? "")
+    );
   const imported = editing
     ? db
         .select()
@@ -35,17 +54,20 @@ export function useWeightLog() {
         )
     : false;
   function launch(row: RecordRow | null) {
-    setEditing(row);
-    setError("");
-    setDay(row ? dayOf(row.measuredAt) : localDay());
-    setInputs(
-      Object.fromEntries(
+    const form: Form = {
+      day: row ? dayOf(row.measuredAt) : localDay(),
+      inputs: Object.fromEntries(
         Object.entries(row?.values ?? {}).map(([key, value]) => [
           key,
-          String(Math.round(display(key, value) * 10) / 10),
+          seed(Math.round(display(key, value) * 10) / 10),
         ])
-      )
-    );
+      ),
+    };
+    setEditing(row);
+    setError("");
+    setDay(form.day);
+    setInputs(form.inputs);
+    setInitial(form);
     setOpen(true);
   }
   function save() {
@@ -59,11 +81,10 @@ export function useWeightLog() {
       const raw = inputs[key]?.trim();
       // Preserve canonical precision when a field wasn't changed in the editor.
       const original = editing?.values[key];
-      const unchanged =
-        original !== undefined && raw === String(Math.round(display(key, original) * 10) / 10);
-      const value = unchanged ? original : toKg(parseNumber(raw ?? ""), units);
+      const unchanged = original !== undefined && raw === initial.inputs[key];
+      const value = unchanged ? original : toKg(parseDecimal(raw ?? "", format.tag) ?? NaN, units);
       if (!Number.isFinite(value) || value <= 0 || value > 500) {
-        setError(`${t(key)}: ${t("invalid")} (0–${format(key, 500)})`);
+        setError(t("invalidValue", { field: t(key), max: weightText(500, units) }));
         return;
       }
       values[key] = unchanged ? original : Math.round(value * 10000) / 10000;
@@ -94,6 +115,7 @@ export function useWeightLog() {
   }
   function remove() {
     if (!editing) return;
+    // vector: irreversible
     Alert.alert(t("delete"), t("deleteConfirm"), [
       { text: t("cancel"), style: "cancel" },
       {
@@ -116,13 +138,14 @@ export function useWeightLog() {
     fields,
     unit,
     display,
-    format,
+    reading,
     open,
     editing,
     inputs,
     day,
     error,
     busy,
+    dirty,
     imported,
     limit,
     setLimit,
