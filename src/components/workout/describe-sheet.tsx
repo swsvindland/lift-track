@@ -1,16 +1,26 @@
 import { useState } from "react";
 import { Pressable, View } from "react-native";
-import { SystemButton, SystemIcon, SystemLabel, SystemText as Text } from "@/components/system";
-import { Editor, ErrorText, Field } from "@/components/ui";
 import { ExercisePicker } from "@/components/exercises/exercise-picker";
 import { write } from "@/lib/data";
 import { useExercises } from "@/lib/exercise-store";
 import type { Exercise } from "@/lib/exercises";
-import { setText } from "@/lib/format";
+import { useLiftFormat } from "@/lib/format";
 import { readWorkout, workoutDraft, type WorkoutDraftItem } from "@/lib/lift-ai";
 import { useStore } from "@/lib/store";
 import { modelNote, useModel } from "@/lib/use-model";
 import { addLoggedExercise, exerciseUsage } from "@/lib/workouts";
+import {
+  Button,
+  Editor,
+  ErrorText,
+  Field,
+  IconButton,
+  Label,
+  Meta,
+  Note,
+  Text,
+  useKitFormat,
+} from "@/vector";
 
 type Props = { open: boolean; close: () => void; workoutId: number };
 
@@ -24,7 +34,9 @@ export function DescribeSheet(props: Props) {
 }
 
 function OpenSheet({ open, close, workoutId }: Props) {
-  const { units } = useStore();
+  const { units, t } = useStore();
+  const format = useKitFormat();
+  const { setText } = useLiftFormat();
   const { all } = useExercises();
   const model = useModel({ prewarm: true });
   const [text, setTextValue] = useState("");
@@ -43,12 +55,11 @@ function OpenSheet({ open, close, workoutId }: Props) {
       const items = workoutDraft(parsed, all, units, (e) =>
         Math.min(3, usage.get(e.id)?.count ?? 0)
       );
-      if (!items.length)
-        throw new Error("No sets found. Try the exercise, then load × reps × sets.");
+      if (!items.length) throw new Error(t("noSetsFound"));
       setDraft(items);
       setUnread(parsed.unread);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Couldn't read that.");
+      setError(e instanceof Error ? e.message : t("couldNotRead"));
     } finally {
       setBusy(false);
     }
@@ -67,39 +78,42 @@ function OpenSheet({ open, close, workoutId }: Props) {
   return (
     <>
       <Editor
-        title="Type or say sets"
+        title={t("typeOrSaySets")}
         open={open}
         close={close}
-        footer={
-          draft ? (
-            <SystemButton isDisabled={!ready} onPress={add}>
-              {`Add ${draft.length} ${draft.length === 1 ? "exercise" : "exercises"}, sets done`}
-            </SystemButton>
-          ) : (
-            <SystemButton isDisabled={busy || !text.trim()} onPress={() => void read()}>
-              {busy ? "Reading…" : "Read"}
-            </SystemButton>
-          )
+        dirty={!!text.trim()}
+        primary={
+          draft
+            ? {
+                label: t(draft.length === 1 ? "addExerciseSetsDone" : "addExercisesSetsDone", {
+                  n: format.number(draft.length),
+                }),
+                onPress: add,
+                disabled: !ready,
+              }
+            : {
+                label: busy ? t("reading") : t("read"),
+                onPress: () => void read(),
+                disabled: busy || !text.trim(),
+              }
         }
       >
         {!draft && (
           <>
             <Field
-              label="What did you do?"
+              label={t("whatDidYouDo")}
               value={text}
               onChange={setTextValue}
-              placeholder="bench 225x5x3, incline db 30s for 12 12 10, pull ups bw 3x8"
+              placeholder={t("describePlaceholder")}
               multiline
               autoFocus
             />
-            <Text className="text-sm text-muted">
-              Tap the keyboard&apos;s microphone to dictate. Loads without a unit are in{" "}
-              {units === "metric" ? "kg" : "lb"}. It&apos;s read on this phone
-              {model.available ? " with its own model" : ""}.
-            </Text>
-            {modelNote(model.status) && (
-              <Text className="text-sm text-muted">{modelNote(model.status)}</Text>
-            )}
+            <Note>
+              {t(model.available ? "describeNoteModel" : "describeNote", {
+                unit: units === "metric" ? "kg" : "lb",
+              })}
+            </Note>
+            {modelNote(model.status) && <Note>{modelNote(model.status)}</Note>}
           </>
         )}
         {draft?.map((item, i) => (
@@ -108,51 +122,50 @@ function OpenSheet({ open, close, workoutId }: Props) {
               <Pressable
                 className="flex-1"
                 accessibilityRole="button"
-                accessibilityHint="Choose a different exercise"
+                accessibilityHint={t("chooseDifferentExercise")}
                 onPress={() => setPicking(i)}
               >
-                <Text className={item.exercise ? "font-semibold" : "font-semibold text-warning"}>
-                  {item.exercise?.name ?? "Pick an exercise"}
+                <Text variant="bodyStrong" tone={item.exercise ? "default" : "warning"}>
+                  {item.exercise?.name ?? t("pickAnExercise")}
                 </Text>
-                <Text className="text-sm text-muted">
-                  “{item.said}”{!item.confident && item.exercise ? " · check this match" : ""}
-                </Text>
+                <Meta
+                  items={[
+                    t("quoted", { text: item.said }),
+                    !item.confident && item.exercise ? t("checkThisMatch") : "",
+                  ]}
+                />
               </Pressable>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel={`Remove ${item.said}`}
-                hitSlop={8}
+              <IconButton
+                icon="clear"
+                accessibilityLabel={t("removeItem", { name: item.said })}
                 onPress={() => setDraft(draft.filter((_, j) => j !== i))}
-              >
-                <SystemIcon name="close-circle" color="muted" />
-              </Pressable>
+              />
             </View>
-            <Text className="font-mono text-sm">
-              {item.sets.map((s) => setText({ ...s, weightKg: s.weightKg }, units)).join(",  ")}
-            </Text>
+            <Meta
+              tone="default"
+              items={item.sets.map((s) => setText({ ...s, weightKg: s.weightKg }, units))}
+            />
           </View>
         ))}
         {draft && unread.length > 0 && (
           <View className="gap-1">
-            <SystemLabel>Not read</SystemLabel>
+            <Label>{t("notRead")}</Label>
             {unread.map((u) => (
-              <Text key={u} className="text-sm text-muted">
-                {u}
-              </Text>
+              <Note key={u}>{u}</Note>
             ))}
           </View>
         )}
         {draft && (
-          <SystemButton variant="ghost" onPress={() => setDraft(null)}>
-            Edit the text
-          </SystemButton>
+          <Button variant="ghost" onPress={() => setDraft(null)}>
+            {t("editTheText")}
+          </Button>
         )}
         <ErrorText message={error} />
       </Editor>
       <ExercisePicker
         open={picking !== null}
         close={() => setPicking(null)}
-        title="Which exercise?"
+        title={t("whichExercise")}
         replacing={picking !== null ? draft?.[picking]?.exercise : undefined}
         onPick={(exercise: Exercise) => {
           if (picking === null || !draft) return;

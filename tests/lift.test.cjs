@@ -186,6 +186,26 @@ test("a workout logs in one tap per set, prefills from last time and survives fi
   assert.equal(db.select().from(schema.workouts).all().length, 2);
 });
 
+test("a late Undo is a no-op once its workout or exercise is gone", () => {
+  const { workouts, db, schema, exercises } = lift();
+  const all = exercises.allExercises([]);
+  const bench = all.find((e) => e.id === "barbell-bench-press");
+  const id = workouts.startWorkout();
+  const block = workouts.addExercise(id, bench);
+  const set = workouts.workoutDetail(id).exercises[0].sets[0];
+
+  // A deleted set whose exercise was removed since: Undo skips it instead of a foreign-key error.
+  const undoSet = workouts.deleteSet(set.id);
+  const undoBlock = workouts.removeExercise(block);
+  assert.doesNotThrow(undoSet);
+  assert.equal(db.select().from(schema.sets).all().length, 0);
+
+  // A removed exercise whose workout was discarded since.
+  workouts.discardWorkout(id);
+  assert.doesNotThrow(undoBlock);
+  assert.equal(db.select().from(schema.workoutExercises).all().length, 0);
+});
+
 test("swapping keeps finished sets and reorders, supersets pair with the next exercise", () => {
   const { workouts, exercises } = lift();
   const all = exercises.allExercises([]);

@@ -27,7 +27,11 @@ function load(file, dependencies = {}) {
 }
 const metrics = load("src/lib/metrics.ts");
 const schema = load("src/db/schema.ts");
-const { dictionaries, languagePreference, resolveLanguage } = load("src/lib/translations.ts");
+// Only currentLanguage() reads the database and the phone; the rest of the module is pure.
+const { dictionaries, languagePreference, resolveLanguage } = load("src/lib/translations.ts", {
+  "@/db": schema,
+  "expo-localization": { getLocales: () => [] },
+});
 const close = (a, b, epsilon = 1e-8) => assert.ok(Math.abs(a - b) < epsilon, `${a} ≠ ${b}`);
 
 test("units round-trip and reject partial numeric input", () => {

@@ -1,17 +1,7 @@
 import { useRef, useState } from "react";
 import { Alert, Pressable, View } from "react-native";
-import { router, Stack, useNavigation } from "expo-router";
+import { router, useNavigation } from "expo-router";
 import { usePreventRemove } from "expo-router/react-navigation";
-import { useThemeColor } from "heroui-native";
-import {
-  Chip,
-  SystemButton,
-  SystemIconButton,
-  SystemLabel,
-  SystemPanel,
-  SystemText as Text,
-} from "@/components/system";
-import { ActionMenu, Field, Screen } from "@/components/ui";
 import { ExercisePicker } from "@/components/exercises/exercise-picker";
 import { write } from "@/lib/data";
 import { pendingDraft, setPendingDraft } from "@/lib/draft-store";
@@ -32,42 +22,25 @@ import {
 } from "@/lib/programs";
 import { useStore } from "@/lib/store";
 import { activeGym, listGyms } from "@/lib/workouts";
+import {
+  ActionMenu,
+  Button,
+  Choices,
+  DetailScreen,
+  Field,
+  Label,
+  Meta,
+  Note,
+  Panel,
+  Stepper,
+  SystemState,
+  Text,
+  Value,
+  useKitFormat,
+  useKitStrings,
+} from "@/vector";
 
 const MAX_SETS = 8;
-
-function Stepper({
-  value,
-  onChange,
-  min,
-  max,
-  label,
-}: {
-  value: number;
-  onChange: (value: number) => void;
-  min: number;
-  max: number;
-  label: string;
-}) {
-  return (
-    <View className="flex-row items-center">
-      <SystemIconButton
-        icon="remove"
-        iconSize={18}
-        accessibilityLabel={`Fewer ${label}`}
-        isDisabled={value <= min}
-        onPress={() => onChange(value - 1)}
-      />
-      <Text className="min-w-6 text-center font-mono">{value}</Text>
-      <SystemIconButton
-        icon="add"
-        iconSize={18}
-        accessibilityLabel={`More ${label}`}
-        isDisabled={value >= max}
-        onPress={() => onChange(value + 1)}
-      />
-    </View>
-  );
-}
 
 /** Weekly sets per muscle in week one: whole sets for primary movers, half for secondary. */
 function weeklySets(draft: ProgramDraft, byId: (id: string) => Exercise) {
@@ -83,10 +56,10 @@ function weeklySets(draft: ProgramDraft, byId: (id: string) => Exercise) {
  * opens as its next block, loads carrying over, and saves as a new program.
  */
 export function ProgramEditor({ programId }: { programId?: number }) {
-  const { units } = useStore();
+  const { units, t } = useStore();
+  const strings = useKitStrings();
+  const format = useKitFormat();
   const { byId } = useExercises();
-  const background = useThemeColor("background");
-  const foreground = useThemeColor("foreground");
   const [program] = useState(() => (programId ? programDetail(programId) : undefined));
   // Where saving goes: a new program, or back into this one.
   const kind = !programId ? "new" : program?.status === "finished" ? "again" : program?.status;
@@ -104,7 +77,7 @@ export function ProgramEditor({ programId }: { programId?: number }) {
   const valid = () => {
     if (!draft) return false;
     if (!draft.days.some((d) => !d.slots.length)) return true;
-    Alert.alert("Empty day", "Give every day at least one exercise, or remove the day.");
+    Alert.alert(t("emptyDay"), t("emptyDayBody"));
     return false;
   };
   /** Saves without starting: back into this program, or as a new saved one. */
@@ -121,11 +94,12 @@ export function ProgramEditor({ programId }: { programId?: number }) {
   usePreventRemove(unsaved, ({ data }) => {
     const leave = () => navigation.dispatch(data.action);
     if (left.current) return leave();
-    Alert.alert(kind === "new" ? "Keep this program?" : "Save changes?", undefined, [
-      { text: "Keep editing", style: "cancel" },
-      { text: "Discard", style: "destructive", onPress: leave },
+    // vector: irreversible
+    Alert.alert(kind === "new" ? t("keepThisProgram") : t("saveChanges"), undefined, [
+      { text: t("keepEditing"), style: "cancel" },
+      { text: t("discard"), style: "destructive", onPress: leave },
       {
-        text: kind === "new" || kind === "again" ? "Save for later" : "Save",
+        text: kind === "new" || kind === "again" ? t("saveForLater") : strings.save,
         onPress: () => {
           if (persist()) leave();
         },
@@ -133,24 +107,12 @@ export function ProgramEditor({ programId }: { programId?: number }) {
     ]);
   });
 
-  const header = (
-    <Stack.Screen
-      options={{
-        headerShown: true,
-        title: kind === "new" ? "New program" : kind === "again" ? "Run again" : "Edit program",
-        headerBackButtonDisplayMode: "minimal",
-        headerStyle: { backgroundColor: background },
-        headerTintColor: foreground,
-        contentStyle: { backgroundColor: background },
-      }}
-    />
-  );
+  const title = t(kind === "new" ? "newProgram" : kind === "again" ? "runAgain" : "editProgram");
   if (!draft)
     return (
-      <Screen title="Program" nativeHeader>
-        {header}
-        <Text className="text-muted">Nothing to edit.</Text>
-      </Screen>
+      <DetailScreen title={title}>
+        <SystemState kind="empty" message={t("nothingToEdit")} />
+      </DetailScreen>
     );
 
   const change = (fn: (d: ProgramDraft) => void) =>
@@ -192,12 +154,13 @@ export function ProgramEditor({ programId }: { programId?: number }) {
       leave();
     };
     if (running && running.id !== programId)
+      // vector: irreversible
       Alert.alert(
-        `Start ${draft.name}?`,
-        `${running.name} ends. Workouts you did stay in History.`,
+        t("startNamed", { name: draft.name }),
+        t("endsStayInHistory", { name: running.name }),
         [
-          { text: "Cancel", style: "cancel" },
-          { text: "Start", onPress: go },
+          { text: t("cancel"), style: "cancel" },
+          { text: t("start"), onPress: go },
         ]
       );
     else go();
@@ -208,68 +171,65 @@ export function ProgramEditor({ programId }: { programId?: number }) {
 
   const weeks = draft.rir.length;
   const gym = gyms.find((g) => g.id === draft.gymId) ?? activeGym(units);
+  const whole = (n: number) => format.number(n);
   return (
     <>
-      <Screen title="Program" nativeHeader>
-        {header}
+      <DetailScreen title={title}>
         <Field
-          label="Name"
+          label={t("name")}
           value={draft.name}
           onChange={(name) => change((d) => void (d.name = name))}
         />
         {gyms.length > 1 && (
           <View className="gap-2">
-            <SystemLabel>Gym</SystemLabel>
-            <View className="flex-row flex-wrap gap-2">
-              {gyms.map((g) => (
-                <Chip
-                  key={g.id}
-                  label={g.name}
-                  selected={g.id === gym.id}
-                  onPress={() => change((d) => void (d.gymId = g.id))}
-                />
-              ))}
-            </View>
-            <Text className="text-sm text-muted">
-              Sessions swap in stand-ins for exercises this gym can&apos;t do.
-            </Text>
+            <Label accessibilityRole="header">{t("gym")}</Label>
+            <Choices
+              values={gyms.map((g) => String(g.id))}
+              value={String(gym.id)}
+              onChange={(id) => change((d) => void (d.gymId = Number(id)))}
+              label={(id) => gyms.find((g) => String(g.id) === id)?.name ?? ""}
+              accessibilityLabel={t("gym")}
+            />
+            <Note>{t("gymStandInsNote")}</Note>
           </View>
         )}
         <View className="gap-2">
-          <SystemLabel>Weeks before the deload</SystemLabel>
-          <View className="flex-row items-center justify-between">
-            <Text className="flex-1 text-sm text-muted">
-              Reps in reserve by week: {draft.rir.join(" → ")} → deload
-            </Text>
+          <Label accessibilityRole="header">{t("weeksBeforeDeload")}</Label>
+          <View className="flex-row items-center justify-between gap-3">
+            <View className="flex-1 gap-1">
+              <Note>{t("rirByWeek")}</Note>
+              <Meta items={[...draft.rir.map((r) => format.number(r)), t("deload")]} />
+            </View>
             <Stepper
               value={weeks}
               min={3}
               max={6}
-              label="weeks"
+              label={t("weeksBeforeDeload")}
+              format={whole}
               onChange={(w) => change((d) => void (d.rir = rirPlan(w)))}
             />
           </View>
         </View>
 
         {draft.days.map((day, dayIndex) => (
-          <SystemPanel key={dayIndex} className="gap-2">
-            <View className="flex-row items-center gap-2">
+          <Panel key={dayIndex} className="gap-2">
+            <View className="flex-row items-end gap-2">
               <View className="flex-1">
                 <Field
-                  label={`Day ${dayIndex + 1}`}
+                  label={t("dayN", { n: format.number(dayIndex + 1) })}
                   value={day.name}
                   onChange={(name) => change((d) => void (d.days[dayIndex].name = name))}
                 />
               </View>
               <ActionMenu
-                accessibilityLabel={`${day.name} options`}
+                accessibilityLabel={t("optionsFor", { name: day.name })}
                 sections={[
                   {
                     actions: [
                       {
                         key: "remove",
-                        label: "Remove day",
-                        icon: "trash-outline",
+                        label: t("removeDay"),
+                        icon: "delete",
                         destructive: true,
                         disabled: draft.days.length <= 1,
                         onPress: () => change((d) => void d.days.splice(dayIndex, 1)),
@@ -290,25 +250,26 @@ export function ProgramEditor({ programId }: { programId?: number }) {
                     <Pressable
                       className="flex-1"
                       accessibilityRole="button"
-                      accessibilityHint="Swap exercise"
+                      accessibilityHint={t("swapExercise")}
                       onPress={() => setPicking({ day: dayIndex, slot: slotIndex })}
                     >
-                      <Text className="font-medium" numberOfLines={1}>
-                        {exercise.name}
-                      </Text>
-                      <Text className="text-sm text-muted">
-                        {slot.reps[0]}–{slot.reps[1]} reps · tap to swap
-                      </Text>
+                      <Text variant="bodyStrong">{exercise.name}</Text>
+                      <Meta
+                        items={[
+                          t("repRange", { range: format.range(slot.reps[0], slot.reps[1]) }),
+                          t("tapToSwap"),
+                        ]}
+                      />
                     </Pressable>
                     <ActionMenu
-                      accessibilityLabel={`${exercise.name} options`}
+                      accessibilityLabel={t("optionsFor", { name: exercise.name })}
                       sections={[
                         {
                           actions: [
                             {
                               key: "up",
-                              label: "Move up",
-                              icon: "arrow-up",
+                              label: t("moveUp"),
+                              icon: "moveUp",
                               disabled: slotIndex === 0,
                               onPress: () =>
                                 change((d) => {
@@ -321,7 +282,7 @@ export function ProgramEditor({ programId }: { programId?: number }) {
                             },
                             {
                               key: "fewer",
-                              label: "Fewer reps",
+                              label: t("fewerReps"),
                               icon: "remove",
                               disabled: slot.reps[0] <= 1,
                               onPress: () =>
@@ -331,7 +292,7 @@ export function ProgramEditor({ programId }: { programId?: number }) {
                             },
                             {
                               key: "more",
-                              label: "More reps",
+                              label: t("moreReps"),
                               icon: "add",
                               onPress: () =>
                                 updateSlot(dayIndex, slotIndex, {
@@ -340,8 +301,8 @@ export function ProgramEditor({ programId }: { programId?: number }) {
                             },
                             {
                               key: "remove",
-                              label: "Remove",
-                              icon: "trash-outline",
+                              label: t("remove"),
+                              icon: "delete",
                               destructive: true,
                               onPress: () =>
                                 change((d) => void d.days[dayIndex].slots.splice(slotIndex, 1)),
@@ -351,66 +312,82 @@ export function ProgramEditor({ programId }: { programId?: number }) {
                       ]}
                     />
                   </View>
-                  <View className="flex-row items-center justify-between">
-                    <Text className="text-sm text-muted">Sets in week 1</Text>
+                  <View className="flex-row items-center justify-between gap-3">
+                    <Note className="flex-1">{t("setsInWeekOne")}</Note>
                     <Stepper
                       value={slot.sets}
                       min={1}
                       max={MAX_SETS}
-                      label="sets"
+                      label={t("setsInWeekOneOf", { name: exercise.name })}
+                      format={whole}
                       onChange={(sets) => updateSlot(dayIndex, slotIndex, { sets })}
                     />
                   </View>
                 </View>
               );
             })}
-            <SystemButton variant="ghost" icon="add" onPress={() => setPicking({ day: dayIndex })}>
-              Add exercise
-            </SystemButton>
-          </SystemPanel>
+            <Button
+              variant="ghost"
+              icon="add"
+              className="self-start"
+              onPress={() => setPicking({ day: dayIndex })}
+            >
+              {t("addExercise")}
+            </Button>
+          </Panel>
         ))}
 
-        <SystemButton
+        <Button
           variant="secondary"
           icon="add"
           onPress={() =>
-            change((d) => void d.days.push({ name: `Day ${d.days.length + 1}`, slots: [] }))
+            change(
+              (d) =>
+                void d.days.push({
+                  name: t("dayN", { n: format.number(d.days.length + 1) }),
+                  slots: [],
+                })
+            )
           }
         >
-          Add day
-        </SystemButton>
+          {t("addDay")}
+        </Button>
 
-        <SystemPanel className="gap-2">
-          <SystemLabel>Week 1 sets per muscle</SystemLabel>
+        <Panel>
+          <Panel.Header eyebrow={t("weekOneSetsPerMuscle")} />
           {weeklySets(draft, byId).map(([m, total]) => (
-            <View key={m} className="flex-row justify-between">
-              <Text className="text-sm">{muscleLabels[m]}</Text>
-              <Text className="font-mono text-sm text-muted">{Math.round(total * 10) / 10}</Text>
+            <View key={m} className="flex-row items-center justify-between gap-3">
+              <Text variant="small" className="shrink">
+                {muscleLabels[m]}
+              </Text>
+              <Value
+                size="xs"
+                tone="muted"
+                value={format.number(total, Number.isInteger(total) ? 0 : 1)}
+              />
             </View>
           ))}
-          <Text className="text-sm text-muted">
-            Sets rise week to week when you recover well and hit your reps.
-          </Text>
-        </SystemPanel>
+          <Note>{t("setsRiseNote")}</Note>
+        </Panel>
 
         {kind === "active" ? (
-          <SystemButton onPress={save}>Save</SystemButton>
+          <Button onPress={save}>{strings.save}</Button>
         ) : (
           <View className="gap-2">
-            <SystemButton icon="play" onPress={start}>
-              Start program
-            </SystemButton>
-            <SystemButton variant="secondary" onPress={save}>
-              {kind === "saved" ? "Save" : "Save for later"}
-            </SystemButton>
+            <Button icon="play" onPress={start}>
+              {t("startProgram")}
+            </Button>
+            <Button variant="secondary" onPress={save}>
+              {kind === "saved" ? strings.save : t("saveForLater")}
+            </Button>
           </View>
         )}
-      </Screen>
+      </DetailScreen>
       <ExercisePicker
         open={!!picking}
         close={() => setPicking(null)}
         onPick={pick}
-        title={picking?.slot !== undefined ? "Swap exercise" : "Add exercise"}
+        title={picking?.slot !== undefined ? t("swapExercise") : t("addExercise")}
         replacing={
           picking?.slot !== undefined
             ? byId(draft.days[picking.day].slots[picking.slot].exerciseId)

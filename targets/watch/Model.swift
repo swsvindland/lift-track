@@ -8,12 +8,12 @@ enum Effort: String, Codable, CaseIterable, Identifiable {
   case hard, good, easy
   var id: String { rawValue }
 
-  /// The same colors as the phone's effort tokens (--color-effort-* in src/global.css).
-  var color: Color {
+  /// Effort is intensity, not status: shown as 1–3 filled bars (EffortMark), never as a hue.
+  var level: Int {
     switch self {
-    case .hard: return Color(red: 1, green: 0x45 / 255, blue: 0x3a / 255)
-    case .good: return Color(red: 1, green: 0x9f / 255, blue: 0x0a / 255)
-    case .easy: return Color(red: 0x30 / 255, green: 0xd1 / 255, blue: 0x58 / 255)
+    case .easy: return 1
+    case .good: return 2
+    case .hard: return 3
     }
   }
 }
@@ -106,5 +106,6 @@ struct Command: Codable, Equatable {
 func loadText(_ kg: Double, unit: String) -> String {
   if kg == 0 { return "BW" }
   let value = ((unit == "kg" ? kg : kg / 0.45359237) * 100).rounded() / 100
-  return String(format: "%g", value)
+  // With the locale's decimal separator: 102,5 in de and fr.
+  return value.formatted(.number.precision(.fractionLength(0...2)))
 }

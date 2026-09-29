@@ -3,8 +3,6 @@ import { Pressable, View } from "react-native";
 import { router } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
 import { File } from "expo-file-system";
-import { SystemButton, SystemIcon, SystemLabel, SystemText as Text } from "@/components/system";
-import { Editor, ErrorText, Field } from "@/components/ui";
 import { ExercisePicker } from "@/components/exercises/exercise-picker";
 import { setPendingDraft } from "@/lib/draft-store";
 import { matchExercise, type Exercise } from "@/lib/exercises";
@@ -12,7 +10,21 @@ import { useExercises } from "@/lib/exercise-store";
 import { readProgram } from "@/lib/lift-ai";
 import { linesToText, recognizeText, textRecognitionAvailable } from "@/lib/local-ai";
 import { rirPlan } from "@/lib/progression";
+import { useStore } from "@/lib/store";
 import { modelNote, useModel } from "@/lib/use-model";
+import {
+  Button,
+  Editor,
+  ErrorText,
+  Field,
+  IconButton,
+  Label,
+  Meta,
+  Note,
+  ProcessLine,
+  Text,
+  useKitFormat,
+} from "@/vector";
 
 type Slot = {
   said: string;
@@ -34,6 +46,8 @@ export function ImportSheet(props: Props) {
 }
 
 function OpenImport({ open, close }: Props) {
+  const { t } = useStore();
+  const format = useKitFormat();
   const { all } = useExercises();
   const model = useModel({ prewarm: true });
   const [text, setText] = useState("");
@@ -48,8 +62,7 @@ function OpenImport({ open, close }: Props) {
     const permission = camera
       ? await ImagePicker.requestCameraPermissionsAsync()
       : { granted: true };
-    if (!permission.granted)
-      return setError("Allow camera access in Settings to photograph a page.");
+    if (!permission.granted) return setError(t("allowCameraProgram"));
     const result = camera
       ? await ImagePicker.launchCameraAsync(options)
       : await ImagePicker.launchImageLibraryAsync(options);
@@ -59,10 +72,10 @@ function OpenImport({ open, close }: Props) {
     try {
       const lines = await recognizeText(uri);
       const read = linesToText(lines);
-      if (!read.trim()) throw new Error("No text found. Try a flatter, closer photo.");
+      if (!read.trim()) throw new Error(t("noTextFound"));
       setText((current) => (current.trim() ? `${current}\n${read}` : read));
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Couldn't read that photo.");
+      setError(e instanceof Error ? e.message : t("couldNotReadPhoto"));
     } finally {
       // The photo was only needed for its text.
       const file = new File(uri);
@@ -76,8 +89,7 @@ function OpenImport({ open, close }: Props) {
     setError("");
     try {
       const parsed = await readProgram(text, model.generate);
-      if (!parsed.days.length)
-        throw new Error("No exercises with sets and reps found, like “Bench Press 3x6-8”.");
+      if (!parsed.days.length) throw new Error(t("noProgramFound"));
       setDays(
         parsed.days.map((d) => ({
           name: d.name,
@@ -88,7 +100,7 @@ function OpenImport({ open, close }: Props) {
         }))
       );
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Couldn't read that.");
+      setError(e instanceof Error ? e.message : t("couldNotRead"));
     } finally {
       setBusy("");
     }
@@ -99,7 +111,7 @@ function OpenImport({ open, close }: Props) {
   const openEditor = () => {
     if (!days) return;
     setPendingDraft({
-      name: "Imported program",
+      name: t("importedProgram"),
       rir: rirPlan(5),
       days: days.map((d) => ({
         name: d.name,
@@ -113,87 +125,89 @@ function OpenImport({ open, close }: Props) {
   return (
     <>
       <Editor
-        title="Import a program"
+        title={t("importProgram")}
         open={open}
         close={close}
-        footer={
-          days ? (
-            <SystemButton isDisabled={!ready} onPress={openEditor}>
-              Review in the editor
-            </SystemButton>
-          ) : (
-            <SystemButton isDisabled={!!busy || !text.trim()} onPress={() => void read()}>
-              {busy === "read" ? "Reading…" : "Read program"}
-            </SystemButton>
-          )
+        dirty={!!text.trim() || !!days}
+        primary={
+          days
+            ? { label: t("reviewInEditor"), onPress: openEditor, disabled: !ready }
+            : {
+                label: t("readProgram"),
+                onPress: () => void read(),
+                disabled: !!busy || !text.trim(),
+                loading: busy === "read",
+                loadingLabel: t("reading"),
+              }
         }
       >
         {!days && (
           <>
             {textRecognitionAvailable() && (
               <View className="flex-row gap-2">
-                <SystemButton
+                <Button
                   variant="secondary"
-                  icon="camera-outline"
+                  icon="camera"
                   className="flex-1"
-                  isDisabled={!!busy}
+                  disabled={!!busy}
                   onPress={() => void photo(true)}
                 >
-                  Photograph
-                </SystemButton>
-                <SystemButton
+                  {t("photograph")}
+                </Button>
+                <Button
                   variant="secondary"
-                  icon="image-outline"
+                  icon="photo"
                   className="flex-1"
-                  isDisabled={!!busy}
+                  disabled={!!busy}
                   onPress={() => void photo(false)}
                 >
-                  Choose photo
-                </SystemButton>
+                  {t("choosePhoto")}
+                </Button>
               </View>
             )}
-            {busy === "photo" && <Text className="text-muted">Reading the page…</Text>}
+            {busy === "photo" && <ProcessLine label={t("readingPage")} />}
             <Field
-              label="Program"
+              label={t("programField")}
               value={text}
               onChange={setText}
-              placeholder={
-                "Day 1 – Upper\nBench Press 3x6-8\nChest-Supported Row 3x8-12\n\nDay 2 – Lower\nSquat 4x5"
-              }
+              placeholder={t("importPlaceholder")}
               multiline
             />
-            <Text className="text-sm text-muted">
-              Paste or photograph it; it&apos;s read on this phone. Loads come from your own history
-              once you train, not from the page.
-            </Text>
-            {modelNote(model.status) && (
-              <Text className="text-sm text-muted">{modelNote(model.status)}</Text>
-            )}
+            <Note>{t("importNote")}</Note>
+            {modelNote(model.status) && <Note>{modelNote(model.status)}</Note>}
           </>
         )}
         {days?.map((day, d) => (
           <View key={d} className="gap-2">
-            <SystemLabel>{day.name}</SystemLabel>
+            <Label accessibilityRole="header">{day.name}</Label>
             {day.slots.map((slot, s) => (
               <View key={s} className="flex-row items-center gap-2 border-b border-separator pb-2">
                 <Pressable
                   className="flex-1"
                   accessibilityRole="button"
+                  accessibilityHint={t("chooseDifferentExercise")}
                   onPress={() => setPicking({ day: d, slot: s })}
                 >
-                  <Text className={slot.exercise ? "font-medium" : "font-medium text-warning"}>
-                    {slot.exercise?.name ?? "Pick an exercise"}
+                  <Text variant="bodyStrong" tone={slot.exercise ? "default" : "warning"}>
+                    {slot.exercise?.name ?? t("pickAnExercise")}
                   </Text>
-                  <Text className="text-sm text-muted">
-                    “{slot.said}” · {slot.sets} × {slot.reps[0]}
-                    {slot.reps[1] !== slot.reps[0] ? `–${slot.reps[1]}` : ""}
-                    {!slot.confident && slot.exercise ? " · check this match" : ""}
-                  </Text>
+                  <Meta
+                    items={[
+                      t("quoted", { text: slot.said }),
+                      t("setsTimesReps", {
+                        sets: format.number(slot.sets),
+                        reps:
+                          slot.reps[1] !== slot.reps[0]
+                            ? format.range(slot.reps[0], slot.reps[1])
+                            : format.number(slot.reps[0]),
+                      }),
+                      !slot.confident && slot.exercise ? t("checkThisMatch") : "",
+                    ]}
+                  />
                 </Pressable>
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel={`Remove ${slot.said}`}
-                  hitSlop={8}
+                <IconButton
+                  icon="clear"
+                  accessibilityLabel={t("removeItem", { name: slot.said })}
                   onPress={() =>
                     setDays(
                       days.map((x, i) =>
@@ -201,24 +215,22 @@ function OpenImport({ open, close }: Props) {
                       )
                     )
                   }
-                >
-                  <SystemIcon name="close-circle" color="muted" />
-                </Pressable>
+                />
               </View>
             ))}
           </View>
         ))}
         {days && (
-          <SystemButton variant="ghost" onPress={() => setDays(null)}>
-            Edit the text
-          </SystemButton>
+          <Button variant="ghost" className="self-start" onPress={() => setDays(null)}>
+            {t("editTheText")}
+          </Button>
         )}
         <ErrorText message={error} />
       </Editor>
       <ExercisePicker
         open={!!picking}
         close={() => setPicking(null)}
-        title="Which exercise?"
+        title={t("whichExercise")}
         replacing={picking ? days?.[picking.day].slots[picking.slot].exercise : undefined}
         onPick={(exercise) => {
           if (!picking || !days) return;

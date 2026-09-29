@@ -1,17 +1,9 @@
 import { useState } from "react";
 import { View } from "react-native";
-import { AiMark } from "@/components/ai-mark";
-import {
-  SystemIconButton,
-  SystemLabel,
-  SystemPanel,
-  SystemText as Text,
-} from "@/components/system";
-import { ErrorText, Field } from "@/components/ui";
 import { useQuery, write } from "@/lib/data";
 import { muscleLabels } from "@/lib/exercises";
 import { useExercises } from "@/lib/exercise-store";
-import { setText } from "@/lib/format";
+import { modelSetText } from "@/lib/format";
 import { readSessionNote, type SessionSummary } from "@/lib/lift-ai";
 import { trainedMuscles } from "@/lib/programs";
 import { useStore } from "@/lib/store";
@@ -25,6 +17,17 @@ import {
 } from "@/lib/workouts";
 import type { Exercise } from "@/lib/exercises";
 import type { Units } from "@/lib/metrics";
+import {
+  ErrorText,
+  Field,
+  Icon,
+  IconButton,
+  Label,
+  Note,
+  Panel,
+  ProcessLine,
+  Text,
+} from "@/vector";
 
 function summarize(
   detail: WorkoutDetail,
@@ -42,7 +45,8 @@ function summarize(
         muscles: (Object.keys(exercise.muscles) as SessionSummary["muscles"]).filter(
           (m) => exercise.muscles[m] === 1
         ),
-        sets: done.map((s) => setText(s, units, true)).join(", "),
+        // The model reads plain digits whatever the app language.
+        sets: done.map((s) => modelSetText(s, units)).join(", "),
       },
     ];
   });
@@ -55,7 +59,7 @@ function summarize(
  * less for a muscle), listed here and applied on top of the progression method.
  */
 export function SessionNote({ detail }: { detail: WorkoutDetail }) {
-  const { units } = useStore();
+  const { units, t } = useStore();
   const { byId } = useExercises();
   const model = useModel({ prewarm: true });
   const [text, setTextValue] = useState(detail.note);
@@ -78,60 +82,56 @@ export function SessionNote({ detail }: { detail: WorkoutDetail }) {
     const reading = await readSessionNote(note, summarize(detail, byId, units), model.generate);
     setBusy(false);
     if (reading) write(() => saveNudges(detail.id, reading));
-    else setError("The on-device model didn't answer. Your note is saved.");
+    else setError(t("modelNoAnswer"));
   };
 
   return (
-    <SystemPanel className="gap-3">
+    <Panel>
       <Field
-        label="How did it go?"
+        label={t("howDidItGo")}
         value={text}
         onChange={setTextValue}
-        placeholder="Elbow was cranky on skull crushers, bench flew up"
+        placeholder={t("sessionNotePlaceholder")}
         multiline
         onDone={() => void save()}
-        accessory={reads ? <AiMark size={14} color="muted" /> : undefined}
+        accessory={reads ? <Icon name="analysis" size={16} tone="muted" /> : undefined}
       />
-      {busy && (
-        <View className="flex-row items-center gap-2">
-          <AiMark size={16} color="muted" />
-          <Text className="text-sm text-muted">Reading your note…</Text>
-        </View>
-      )}
-      {!!error && <ErrorText message={error} />}
+      {busy && <ProcessLine label={t("readingYourNote")} />}
+      <ErrorText message={error} />
       {!busy && nudges.length > 0 && (
-        <View className="gap-1">
+        <View className="gap-2">
           <View className="flex-row items-center gap-2">
-            <AiMark size={16} color="muted" />
-            <SystemLabel>Next time</SystemLabel>
+            <Icon name="analysis" size={16} tone="muted" />
+            <Label accessibilityRole="header">{t("nextTime")}</Label>
           </View>
-          {nudges.map((n) => (
-            <View key={n.id} className="flex-row items-center gap-2">
-              <Text className="flex-1 text-sm">
-                <Text className="font-medium">
-                  {n.exerciseId ? byId(n.exerciseId).name : muscleLabels[n.muscle!]}
-                </Text>
-                {": "}
-                {n.exerciseId
-                  ? n.value > 0
-                    ? "a step further"
-                    : "held where it was"
-                  : n.value > 0
-                    ? "1 more set"
-                    : "1 set fewer"}
-                <Text className="text-muted"> · {n.reason}</Text>
-              </Text>
-              <SystemIconButton
-                icon="close"
-                iconSize={18}
-                color="muted"
-                accessibilityLabel="Don't apply this"
-                onPress={() => write(() => dismissNudges([n.id]))}
-              />
-            </View>
-          ))}
+          {nudges.map((n) => {
+            const change = t(
+              n.exerciseId
+                ? n.value > 0
+                  ? "nudgeStepFurther"
+                  : "nudgeHeld"
+                : n.value > 0
+                  ? "nudgeSetMore"
+                  : "nudgeSetFewer"
+            );
+            return (
+              <View key={n.id} className="flex-row items-center gap-2">
+                <View className="flex-1 gap-0.5">
+                  <Text variant="bodyStrong">
+                    {n.exerciseId ? byId(n.exerciseId).name : muscleLabels[n.muscle!]}
+                  </Text>
+                  <Note>{n.reason ? t("nudgeLine", { change, reason: n.reason }) : change}</Note>
+                </View>
+                <IconButton
+                  icon="close"
+                  accessibilityLabel={t("dontApplyThis")}
+                  onPress={() => write(() => dismissNudges([n.id]))}
+                />
+              </View>
+            );
+          })}
         </View>
       )}
-    </SystemPanel>
+    </Panel>
   );
 }

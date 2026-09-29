@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { ActivityIndicator, View } from "react-native";
+import { View } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { write } from "@/lib/data";
 import { useExercises } from "@/lib/exercise-store";
@@ -40,9 +40,6 @@ export default function Start() {
     }
     router.replace("/workout");
   }, [empty, units, weights, all, byId, settings]);
-  return (
-    <View className="flex-1 items-center justify-center bg-background">
-      <ActivityIndicator />
-    </View>
-  );
+  // The workout replaces this route within a frame, so a spinner would only flash.
+  return <View className="flex-1 bg-background" />;
 }

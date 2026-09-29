@@ -2,7 +2,11 @@ import { useEffect, useState, useSyncExternalStore } from "react";
 import { Platform } from "react-native";
 import Constants from "expo-constants";
 import { eq } from "drizzle-orm";
+import { getCalendars, getLocales } from "expo-localization";
+import type { LiveActivityState } from "expo-live-activity";
 import { db, preferences } from "@/db";
+import { createFormat, localeTag } from "@/vector";
+import { currentLanguage, interpolate, translate, type Language } from "./translations";
 
 /* The rest timer is a deadline, not a countdown: it's stored, so it survives the app being
    killed. While it runs, the lock screen shows it (a Live Activity on iPhone, an ongoing
@@ -59,13 +63,14 @@ export async function prepareRestNotifications() {
     }),
   });
   if (Platform.OS === "android") {
+    const language = currentLanguage();
     await n.setNotificationChannelAsync("rest", {
-      name: "Rest over",
+      name: translate(language, "restOver"),
       importance: n.AndroidImportance.HIGH,
       vibrationPattern: [0, 250, 150, 250],
     });
     await n.setNotificationChannelAsync("rest-running", {
-      name: "Rest timer",
+      name: translate(language, "restTimer"),
       importance: n.AndroidImportance.LOW,
       sound: null,
       vibrationPattern: null,
@@ -76,8 +81,11 @@ export async function prepareRestNotifications() {
   if (!current) await clearLockScreen();
 }
 
-const clock = (ms: number) =>
-  new Date(ms).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+/** A time of day in the app's language, with the phone's region and 12/24-hour setting. */
+const clock = (language: Language, ms: number) =>
+  createFormat(localeTag(language, getLocales()), {
+    uses24h: getCalendars()[0]?.uses24hourClock ?? undefined,
+  }).time(new Date(ms));
 
 // ——— iOS Live Activity: a countdown the system draws, so it ticks with the app asleep ———
 
@@ -100,25 +108,41 @@ function storeActivity(id: string | null) {
     .run();
 }
 
+type ProgressBar = NonNullable<LiveActivityState["progressBar"]>;
+
+/**
+ * The activity's bar with both fields: the end, which the system counts down to, and the rest's length in
+ * seconds, so the meter runs from end − length to end and holds its place across re-renders. The module's TS type
+ * makes `date` and `progress` exclusive, but its native record decodes each on its own
+ * (expo-live-activity ios/ExpoLiveActivityModule.swift: ProgressBar → ContentState timerEndDateInMilliseconds
+ * and progress), so the date bar is widened with the length instead of cast.
+ */
+export function restProgressBar(rest: Pick<Rest, "endsAt" | "total">): ProgressBar {
+  const bar: ProgressBar = { date: rest.endsAt };
+  return Object.assign(bar, { progress: rest.total });
+}
+
 async function showActivity(rest: Rest) {
   const la = await liveActivity();
   if (!la) return;
-  const state = { title: "Rest", subtitle: rest.label, progressBar: { date: rest.endsAt } };
+  const state: LiveActivityState = {
+    title: translate(currentLanguage(), "rest"),
+    subtitle: rest.label,
+    progressBar: restProgressBar(rest),
+  };
   const id = storedActivity();
+  if (id) {
+    try {
+      la.updateActivity(id, state);
+      return;
+    } catch {
+      // Swiped away on the Lock Screen or ended by the system: start a new one instead.
+      storeActivity(null);
+    }
+  }
   try {
-    if (id) la.updateActivity(id, state);
-    else
-      storeActivity(
-        la.startActivity(state, {
-          backgroundColor: "#071017",
-          titleColor: "#f3f6f7",
-          subtitleColor: "#87939b",
-          progressViewTint: "#22d3ee",
-          progressViewLabelColor: "#f3f6f7",
-          timerType: "digital",
-          deepLinkUrl: "lifttrack://workout",
-        }) ?? null
-      );
+    // No config: the app's own target (targets/activity) draws it and links to the workout.
+    storeActivity(la.startActivity(state) ?? null);
   } catch {
     // Live Activities turned off in Settings: the notification still comes.
     storeActivity(null);
@@ -131,7 +155,7 @@ async function endActivity() {
   storeActivity(null);
   const la = await liveActivity();
   try {
-    la?.stopActivity(id, { title: "Rest over" });
+    la?.stopActivity(id, { title: translate(currentLanguage(), "restOver") });
   } catch {
     /* Already gone. */
   }
@@ -152,11 +176,14 @@ async function schedule(rest: Rest | null) {
     const asked = await n.requestPermissionsAsync();
     if (asked.status !== "granted") return;
   }
+  const language = currentLanguage();
   if (Platform.OS === "android")
     await n.scheduleNotificationAsync({
       identifier: ONGOING,
       content: {
-        title: `Rest until ${clock(rest.endsAt)}`,
+        title: interpolate(translate(language, "restUntil"), {
+          time: clock(language, rest.endsAt),
+        }),
         body: rest.label,
         sticky: true,
         autoDismiss: false,
@@ -165,7 +192,7 @@ async function schedule(rest: Rest | null) {
     });
   await n.scheduleNotificationAsync({
     identifier: END,
-    content: { title: "Rest over", body: rest.label, sound: true },
+    content: { title: translate(language, "restOver"), body: rest.label, sound: true },
     trigger: {
       type: n.SchedulableTriggerInputTypes.TIME_INTERVAL,
       seconds,
@@ -179,7 +206,24 @@ async function clearLockScreen() {
   await endActivity();
 }
 
+/*
+ * expo-live-activity passes no staleDate (it hard-codes nil when it starts, updates and ends an activity), so
+ * nothing tells the system when a rest is over. While the app runs, the rest's own deadline ends the Live Activity,
+ * whichever screen is open (the rest bar lives only on the workout). With the app asleep the activity's view shows
+ * the check once its end has passed, and settleRest ends it when the app comes back.
+ */
+let deadline: ReturnType<typeof setTimeout> | undefined;
+function watchDeadline(rest: Rest | null) {
+  clearTimeout(deadline);
+  deadline = rest
+    ? setTimeout(() => void endActivity().catch(() => {}), Math.max(0, rest.endsAt - Date.now()))
+    : undefined;
+}
+// A rest that outlived a relaunch keeps its deadline too.
+watchDeadline(current);
+
 function show(rest: Rest) {
+  watchDeadline(rest);
   void schedule(rest).catch(() => {});
   void showActivity(rest).catch(() => {});
 }
@@ -201,6 +245,7 @@ export function adjustRest(seconds: number) {
 
 export function stopRest() {
   write(null);
+  watchDeadline(null);
   void clearLockScreen().catch(() => {});
 }
 

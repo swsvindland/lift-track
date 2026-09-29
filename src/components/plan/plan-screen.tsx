@@ -1,18 +1,9 @@
 import { useState } from "react";
 import { Alert, Pressable, ScrollView, View } from "react-native";
 import { router } from "expo-router";
-import { twMerge } from "tailwind-merge";
-import {
-  SystemButton,
-  SystemIcon,
-  SystemLabel,
-  SystemPanel,
-  SystemText as Text,
-} from "@/components/system";
-import { ActionMenu, Screen } from "@/components/ui";
 import { useQuery, write } from "@/lib/data";
 import { useExercises } from "@/lib/exercise-store";
-import { rirText } from "@/lib/format";
+import { useLiftFormat } from "@/lib/format";
 import {
   activeMeso,
   endProgram,
@@ -32,29 +23,52 @@ import {
   type SessionState,
 } from "@/lib/programs";
 import { useStore } from "@/lib/store";
+import type { Message } from "@/lib/translations";
+import { useCount } from "@/lib/use-count";
 import { trainingGym } from "@/lib/workouts";
 import { TravelBanner, TravelSheet } from "@/components/gyms/travel";
+import {
+  ActionMenu,
+  Button,
+  Icon,
+  ListRow,
+  Note,
+  Panel,
+  Screen,
+  SettingsSection,
+  SignalCell,
+  Status,
+  Text,
+  useKitFormat,
+} from "@/vector";
 import { ProgramBuilderSheet } from "./program-builder-sheet";
 import { ImportSheet } from "./import-sheet";
 import { previewSession, useStartSession } from "./use-start-session";
 
-const weekLabel = (detail: { rir: number[]; deload: boolean }, week: number) =>
-  isDeloadWeek(detail, week) ? "Deload" : `Week ${week + 1}`;
-
-const stateLabels: Record<SessionState, string> = {
-  done: "done",
-  skipped: "skipped",
-  open: "in progress",
-  next: "next",
-  upcoming: "upcoming",
+const stateLabels: Record<SessionState, Message> = {
+  done: "sessionDone",
+  skipped: "sessionSkipped",
+  open: "sessionOpen",
+  next: "sessionNext",
+  upcoming: "sessionUpcoming",
 };
 
 const openProgram = (id: number) =>
   router.push({ pathname: "/program", params: { id: String(id) } });
 
+/** "Week 3", or "Deload" for the program's last, lighter week. */
+function useWeekLabel() {
+  const { t } = useStore();
+  const format = useKitFormat();
+  return (detail: { rir: number[]; deload: boolean }, week: number) =>
+    isDeloadWeek(detail, week) ? t("deload") : t("weekN", { n: format.number(week + 1) });
+}
+
 /** Saved and finished programs: tap to edit, or start one from its menu. */
 function ProgramList({ programs, running }: { programs: ProgramDetail[]; running?: string }) {
-  const { locale } = useStore();
+  const { t } = useStore();
+  const format = useKitFormat();
+  const count = useCount();
   const { byId } = useExercises();
   if (!programs.length) return null;
   const start = (program: ProgramDetail) => {
@@ -63,79 +77,96 @@ function ProgramList({ programs, running }: { programs: ProgramDetail[]; running
         program.status === "saved" ? startSaved(program.id) : startProgram(nextBlock(program, byId))
       );
     if (!running) return go();
-    Alert.alert(`Start ${program.name}?`, `${running} ends. Workouts you did stay in History.`, [
-      { text: "Cancel", style: "cancel" },
-      { text: "Start", onPress: go },
-    ]);
+    // vector: irreversible
+    Alert.alert(
+      t("startNamed", { name: program.name }),
+      t("endsStayInHistory", { name: running }),
+      [
+        { text: t("cancel"), style: "cancel" },
+        { text: t("start"), onPress: go },
+      ]
+    );
+  };
+  const remove = (program: ProgramDetail) => {
+    // vector: irreversible
+    Alert.alert(
+      t("deleteNamed", { name: program.name }),
+      program.status === "saved" ? undefined : t("workoutsStayInHistory"),
+      [
+        { text: t("cancel"), style: "cancel" },
+        {
+          text: t("delete"),
+          style: "destructive",
+          onPress: () => write(() => deleteProgram(program.id)),
+        },
+      ]
+    );
   };
   return (
-    <View className="gap-2">
-      <SystemLabel>Your programs</SystemLabel>
+    <SettingsSection eyebrow={t("yourPrograms")}>
       {programs.map((program) => {
         const saved = program.status === "saved";
-        const days = `${program.days.length} ${program.days.length === 1 ? "day" : "days"}`;
+        const days = count(program.days.length, "dayCountOne", "dayCount");
+        const run = saved ? t("start") : t("runAgain");
         return (
-          <Pressable
+          <ListRow
             key={program.id}
-            accessibilityRole="button"
-            accessibilityHint={saved ? "Edit program" : "Set up the next block"}
+            title={program.name}
+            description={
+              saved
+                ? t("programNotStarted", {
+                    days,
+                    weeks: count(program.rir.length, "weekCountOne", "weekCount"),
+                  })
+                : t("programFinished", {
+                    date: format.monthDay(new Date(program.endedAt ?? program.startedAt)),
+                    days,
+                  })
+            }
             onPress={() => openProgram(program.id)}
-            className="flex-row items-center gap-2 rounded-2xl bg-surface py-2 pl-4 pr-1 active:opacity-70"
-          >
-            <View className="flex-1 gap-1 py-1">
-              <Text className="font-semibold" numberOfLines={1}>
-                {program.name}
-              </Text>
-              <Text className="text-sm text-muted" numberOfLines={1}>
-                {saved
-                  ? `Not started · ${days} · ${program.rir.length} weeks`
-                  : `Finished ${new Date(program.endedAt ?? program.startedAt).toLocaleDateString(locale, { month: "short", day: "numeric" })} · ${days}`}
-              </Text>
-            </View>
-            <ActionMenu
-              accessibilityLabel={`${program.name} options`}
-              sections={[
-                {
-                  actions: [
-                    {
-                      key: "start",
-                      label: saved ? "Start" : "Run again",
-                      icon: saved ? "play" : "repeat",
-                      onPress: () => start(program),
-                    },
-                    {
-                      key: "edit",
-                      label: saved ? "Edit" : "Edit, then run again",
-                      icon: "create-outline",
-                      onPress: () => openProgram(program.id),
-                    },
-                    {
-                      key: "delete",
-                      label: "Delete",
-                      icon: "trash-outline",
-                      destructive: true,
-                      onPress: () =>
-                        Alert.alert(
-                          `Delete ${program.name}?`,
-                          saved ? undefined : "Workouts you did stay in History.",
-                          [
-                            { text: "Cancel", style: "cancel" },
-                            {
-                              text: "Delete",
-                              style: "destructive",
-                              onPress: () => write(() => deleteProgram(program.id)),
-                            },
-                          ]
-                        ),
-                    },
-                  ],
-                },
-              ]}
-            />
-          </Pressable>
+            accessibilityHint={saved ? t("editProgram") : t("editThenRunAgain")}
+            // The menu is its own element beside the row (control); its actions are the row's actions too.
+            accessibilityActions={[
+              { name: "start", label: run },
+              { name: "delete", label: t("delete") },
+            ]}
+            onAccessibilityAction={(e) =>
+              e.nativeEvent.actionName === "start" ? start(program) : remove(program)
+            }
+            control={
+              <ActionMenu
+                accessibilityLabel={t("optionsFor", { name: program.name })}
+                sections={[
+                  {
+                    actions: [
+                      {
+                        key: "start",
+                        label: run,
+                        icon: saved ? "play" : "repeat",
+                        onPress: () => start(program),
+                      },
+                      {
+                        key: "edit",
+                        label: saved ? t("edit") : t("editThenRunAgain"),
+                        icon: "edit",
+                        onPress: () => openProgram(program.id),
+                      },
+                      {
+                        key: "delete",
+                        label: t("delete"),
+                        icon: "delete",
+                        destructive: true,
+                        onPress: () => remove(program),
+                      },
+                    ],
+                  },
+                ]}
+              />
+            }
+          />
         );
       })}
-    </View>
+    </SettingsSection>
   );
 }
 
@@ -143,7 +174,10 @@ export function PlanScreen() {
   const [building, setBuilding] = useState(false);
   const [importing, setImporting] = useState(false);
   const [traveling, setTraveling] = useState(false);
-  const { units } = useStore();
+  const { units, t } = useStore();
+  const format = useKitFormat();
+  const { rirText } = useLiftFormat();
+  const weekLabel = useWeekLabel();
   const begin = useStartSession();
   const { byId } = useExercises();
   const data = useQuery(() => {
@@ -162,24 +196,17 @@ export function PlanScreen() {
   if (!detail)
     return (
       <>
-        <Screen title="Plan">
-          <SystemPanel className="gap-3">
-            <Text className="text-lg font-semibold">Train on a program</Text>
-            <Text className="text-muted">
-              A block of weeks where effort rises, loads and reps are worked out for every set, and
-              sets grow as you recover, then a lighter deload week.
-            </Text>
-            <SystemButton icon="construct-outline" onPress={() => setBuilding(true)}>
-              Build a program
-            </SystemButton>
-            <SystemButton
-              variant="secondary"
-              icon="document-text-outline"
-              onPress={() => setImporting(true)}
-            >
-              Import one you have
-            </SystemButton>
-          </SystemPanel>
+        <Screen title={t("plan")}>
+          <Panel>
+            <Panel.Title>{t("trainOnProgram")}</Panel.Title>
+            <Text tone="muted">{t("trainOnProgramBody")}</Text>
+            <Button icon="tools" onPress={() => setBuilding(true)}>
+              {t("buildProgram")}
+            </Button>
+            <Button variant="secondary" onPress={() => setImporting(true)}>
+              {t("importOneYouHave")}
+            </Button>
+          </Panel>
           <ProgramList programs={others} />
         </Screen>
         <ProgramBuilderSheet open={building} close={() => setBuilding(false)} />
@@ -194,6 +221,17 @@ export function PlanScreen() {
     if (cell.state === "open") return router.push("/workout");
     previewSession(cell.week, cell.dayId);
   };
+  const end = () => {
+    // vector: irreversible
+    Alert.alert(t("endProgramQuestion"), t("workoutsStayInHistory"), [
+      { text: t("cancel"), style: "cancel" },
+      {
+        text: t("end"),
+        style: "destructive",
+        onPress: () => write(() => endProgram(detail.id)),
+      },
+    ]);
+  };
 
   const current = next?.week ?? totalWeeks(detail) - 1;
   return (
@@ -202,53 +240,49 @@ export function PlanScreen() {
         title={detail.name}
         subtitle={
           next
-            ? `${weekLabel(detail, current)} of ${detail.rir.length}${detail.deload ? " + deload" : ""} · ${rirText(weekRir(detail, current))}`
-            : "Program complete"
+            ? t(detail.deload ? "planProgressDeload" : "planProgress", {
+                week: weekLabel(detail, current),
+                weeks: format.number(detail.rir.length),
+                rir: rirText(weekRir(detail, current)),
+              })
+            : t("programComplete")
         }
         action={
           <ActionMenu
-            accessibilityLabel="Program options"
+            accessibilityLabel={t("programOptions")}
             sections={[
               {
                 actions: [
                   {
                     key: "edit",
-                    label: "Edit program",
-                    icon: "create-outline",
+                    label: t("editProgram"),
+                    icon: "edit",
                     onPress: () => openProgram(detail.id),
                   },
                   {
                     key: "new",
-                    label: "Build a new program",
-                    icon: "construct-outline",
+                    label: t("buildNewProgram"),
+                    icon: "tools",
                     onPress: () => setBuilding(true),
                   },
                   {
                     key: "import",
-                    label: "Import a program",
-                    icon: "document-text-outline",
+                    label: t("importProgram"),
+                    icon: "document",
                     onPress: () => setImporting(true),
                   },
                   {
                     key: "travel",
-                    label: at.travel ? "Change trip" : "I'm traveling",
-                    icon: "airplane-outline",
+                    label: at.travel ? t("changeTrip") : t("startTrip"),
+                    icon: "travel",
                     onPress: () => setTraveling(true),
                   },
                   {
                     key: "end",
-                    label: "End program",
-                    icon: "stop-circle-outline",
+                    label: t("endProgram"),
+                    icon: "stop",
                     destructive: true,
-                    onPress: () =>
-                      Alert.alert("End program?", "Workouts you did stay in History.", [
-                        { text: "Cancel", style: "cancel" },
-                        {
-                          text: "End",
-                          style: "destructive",
-                          onPress: () => write(() => endProgram(detail.id)),
-                        },
-                      ]),
+                    onPress: end,
                   },
                 ],
               },
@@ -258,124 +292,120 @@ export function PlanScreen() {
       >
         <TravelBanner onEdit={() => setTraveling(true)} />
         {next ? (
-          <SystemPanel className="gap-3 bg-accent-soft">
-            <SystemLabel className="text-accent-soft-foreground">
-              {next.state === "open" ? "In progress" : "Next"}
-            </SystemLabel>
-            <Text className="text-xl font-semibold">
-              {dayName(next.dayId)} · {weekLabel(detail, next.week)}
-            </Text>
+          <Panel tone="live">
+            <Panel.Header
+              eyebrow={next.state === "open" ? t("inProgress") : t("next")}
+              meta={weekLabel(detail, next.week)}
+            />
+            <Panel.Title>{dayName(next.dayId)}</Panel.Title>
             {next.state !== "open" && (
-              <Text className="text-sm text-muted">
-                At {at.gym.name}
-                {at.travel ? ", with stand-ins for what it doesn't have" : ""}
-              </Text>
+              <Note>
+                {t(at.travel ? "atGymTravel" : "atGym", {
+                  gym: at.gym.name,
+                })}
+              </Note>
             )}
             {next.state === "open" ? (
-              <SystemButton icon="barbell" onPress={() => router.push("/workout")}>
-                Resume
-              </SystemButton>
+              <Button icon="lift" onPress={() => router.push("/workout")}>
+                {t("resume")}
+              </Button>
             ) : (
-              <View className="flex-row gap-2">
-                <SystemButton
-                  variant="secondary"
-                  icon="eye-outline"
-                  onPress={() => previewSession(next.week, next.dayId)}
-                >
-                  Preview
-                </SystemButton>
-                <SystemButton
+              <Panel.Footer>
+                <Button variant="secondary" onPress={() => previewSession(next.week, next.dayId)}>
+                  {t("preview")}
+                </Button>
+                <Button
                   icon="play"
                   className="flex-1"
                   onPress={() => begin(detail, next.week, next.dayId)}
                 >
-                  Start
-                </SystemButton>
-              </View>
+                  {t("start")}
+                </Button>
+              </Panel.Footer>
             )}
-          </SystemPanel>
+          </Panel>
         ) : (
-          <SystemPanel className="gap-3 bg-success-soft">
-            <Text className="text-lg font-semibold">Block done</Text>
-            <Text className="text-muted">
-              Run it again with loads carrying over, or build a new one.
-            </Text>
-            <SystemButton
+          <Panel>
+            <Status state="ok" label={t("blockDone")} />
+            <Text tone="muted">{t("blockDoneBody")}</Text>
+            <Button
               icon="repeat"
               onPress={() => write(() => startProgram(nextBlock(detail, byId)))}
             >
-              Run again
-            </SystemButton>
-            <SystemButton variant="secondary" onPress={() => setBuilding(true)}>
-              Build a new program
-            </SystemButton>
-          </SystemPanel>
+              {t("runAgain")}
+            </Button>
+            <Button variant="secondary" onPress={() => setBuilding(true)}>
+              {t("buildNewProgram")}
+            </Button>
+          </Panel>
         )}
 
+        {/* Columns size to their day names (no fixed text widths); cells align on the columns' bottom edge. */}
         <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-          <View className="gap-2">
-            <View className="flex-row gap-2">
-              <View className="w-16" />
-              {detail.days.map((day) => (
-                <Text key={day.id} className="w-14 text-xs text-muted" numberOfLines={2}>
-                  {day.name}
-                </Text>
+          <View className="flex-row gap-2">
+            <View className="justify-end gap-2">
+              {progress.map((_, week) => (
+                <View key={week} className="h-11 justify-center">
+                  <Text variant="small">{weekLabel(detail, week)}</Text>
+                </View>
               ))}
             </View>
-            {progress.map((row, week) => (
-              <View key={week} className="flex-row items-center gap-2">
-                <Text className="w-16 text-sm" numberOfLines={1}>
-                  {weekLabel(detail, week)}
+            {detail.days.map((day) => (
+              <View key={day.id} className="min-w-14 max-w-24 justify-end gap-2">
+                <Text variant="caption" tone="muted">
+                  {day.name}
                 </Text>
-                {row.map((cell) => (
-                  <Pressable
-                    key={cell.dayId}
-                    accessibilityRole="button"
-                    accessibilityLabel={`${dayName(cell.dayId)}, ${weekLabel(detail, week)}, ${stateLabels[cell.state]}`}
-                    onPress={() => cellAction(cell)}
-                    className={twMerge(
-                      "h-11 w-14 items-center justify-center rounded-xl active:opacity-60",
-                      cell.state === "done" && "bg-success",
-                      cell.state === "skipped" && "bg-surface-secondary",
-                      cell.state === "next" && "bg-accent",
-                      cell.state === "open" && "border-2 border-accent bg-accent-soft",
-                      cell.state === "upcoming" && "border border-border"
-                    )}
-                  >
-                    {cell.state === "done" && (
-                      <SystemIcon name="checkmark" size={18} color="success-foreground" />
-                    )}
-                    {cell.state === "skipped" && <Text className="text-muted">–</Text>}
-                    {cell.state === "next" && (
-                      <SystemIcon name="play" size={16} color="accent-foreground" />
-                    )}
-                    {cell.state === "open" && (
-                      <SystemIcon name="barbell" size={18} color="accent-soft-foreground" />
-                    )}
-                  </Pressable>
-                ))}
+                {progress.map((row, week) => {
+                  const cell = row.find((c) => c.dayId === day.id);
+                  if (!cell) return <View key={week} className="h-11" />;
+                  const label = t("sessionCell", {
+                    day: day.name,
+                    week: weekLabel(detail, week),
+                    state: t(stateLabels[cell.state]),
+                  });
+                  // The session that is next (or open) is the live cell: a signal fill whose glyph (play, or
+                  // the lift in progress) carries the state; the rest stay hairline marks.
+                  if (cell.state === "next" || cell.state === "open")
+                    return (
+                      <SignalCell
+                        key={week}
+                        selected
+                        accessibilityLabel={label}
+                        onPress={() => cellAction(cell)}
+                      >
+                        <Icon name={cell.state === "next" ? "play" : "lift"} size={17} />
+                      </SignalCell>
+                    );
+                  return (
+                    <Pressable
+                      key={week}
+                      accessibilityRole="button"
+                      accessibilityLabel={label}
+                      onPress={() => cellAction(cell)}
+                      className="h-11 items-center justify-center rounded-control border border-border active:bg-surface-secondary"
+                    >
+                      {cell.state === "done" && <Icon name="check" size={17} tone="success" />}
+                      {cell.state === "skipped" && <Icon name="remove" size={16} tone="muted" />}
+                    </Pressable>
+                  );
+                })}
               </View>
             ))}
           </View>
         </ScrollView>
 
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={`Edit ${detail.name}`}
-          onPress={() => openProgram(detail.id)}
-          className="flex-row items-center gap-3 rounded-2xl bg-surface p-4 active:opacity-70"
-        >
-          <View className="flex-1 gap-1">
-            <SystemLabel>Days</SystemLabel>
-            {detail.days.map((day) => (
-              <Text key={day.id} className="text-sm text-muted" numberOfLines={1}>
-                <Text className="text-sm font-semibold text-foreground">{day.name}: </Text>
-                {day.slots.map((slot) => byId(slot.exerciseId).name).join(", ")}
-              </Text>
-            ))}
-          </View>
-          <Text className="text-accent">Edit</Text>
-        </Pressable>
+        <Panel inset="none">
+          <Panel.Header eyebrow={t("days")} />
+          {detail.days.map((day) => (
+            <ListRow
+              key={day.id}
+              title={day.name}
+              description={format.list(day.slots.map((slot) => byId(slot.exerciseId).name))}
+              onPress={() => openProgram(detail.id)}
+              accessibilityHint={t("editProgram")}
+            />
+          ))}
+        </Panel>
 
         <ProgramList programs={others} running={detail.name} />
       </Screen>

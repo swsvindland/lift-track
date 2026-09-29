@@ -1,16 +1,13 @@
 import { Alert, Pressable, View } from "react-native";
 import { router } from "expo-router";
-import * as Haptics from "expo-haptics";
 import { twMerge } from "tailwind-merge";
-import { SystemButton, SystemLabel, SystemText as Text } from "@/components/system";
-import { AiMark } from "@/components/ai-mark";
-import { ActionMenu } from "@/components/ui";
 import type { Gym } from "@/db";
 import { write } from "@/lib/data";
 import { primaryMuscles, muscleLabels, type Exercise } from "@/lib/exercises";
 import { platesPerSide } from "@/lib/loads";
 import { weightUnit, type Units } from "@/lib/metrics";
 import { defaultRest, startRest } from "@/lib/rest-timer";
+import { useStore } from "@/lib/store";
 import {
   addSet,
   completeSet,
@@ -24,7 +21,21 @@ import {
   type ExerciseBlock,
   type SetRow,
 } from "@/lib/workouts";
-import { columns, SetRowView } from "./set-row";
+import {
+  ActionMenu,
+  Button,
+  Heading,
+  Icon,
+  Label,
+  LinkButton,
+  Meta,
+  Note,
+  Panel,
+  useHaptics,
+  useKitFormat,
+  useKitStrings,
+} from "@/vector";
+import { columns, fitted, SetRowView } from "./set-row";
 
 export function ExerciseCard({
   block,
@@ -68,6 +79,10 @@ export function ExerciseCard({
   /** The exercise after this one, named in the rest timer once this one is done. */
   nextName?: string;
 }) {
+  const { t } = useStore();
+  const format = useKitFormat();
+  const strings = useKitStrings();
+  const haptics = useHaptics();
   const bodyweight = exercise.load === "bodyweight";
   const assisted = exercise.load === "assisted";
   const unit = weightUnit(units);
@@ -91,10 +106,10 @@ export function ExerciseCard({
       return completeSet(row.id);
     });
     if (!ok) {
-      Alert.alert("Enter reps", "Type how many reps you did, then check the set off.");
+      Alert.alert(t("enterReps"), t("enterRepsBody"));
       return;
     }
-    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+    haptics.commit();
     if (restAfter && row.kind !== "warmup")
       startRest(
         restSeconds ?? defaultRest(exercise),
@@ -104,82 +119,74 @@ export function ExerciseCard({
   };
 
   return (
-    <View
-      className={twMerge(
-        "gap-2 rounded-3xl bg-surface p-4",
-        block.supersetGroup !== null && "border-l-4 border-accent"
-      )}
-    >
+    <Panel tone={block.supersetGroup !== null ? "live" : "default"} className="gap-2">
       <View className="flex-row items-start gap-2">
-        <Pressable
-          className="flex-1 gap-0.5"
-          accessibilityRole="link"
-          onPress={() => router.push({ pathname: "/exercise/[id]", params: { id: exercise.id } })}
-        >
-          {block.supersetGroup !== null && (
-            <SystemLabel className="text-accent-soft-foreground">Superset</SystemLabel>
-          )}
-          <Text className="text-lg font-semibold">{exercise.name}</Text>
-          <Text className="text-sm text-muted">
-            {primaryMuscles(exercise)
-              .map((m) => muscleLabels[m])
-              .join(", ")}{" "}
-            · {block.repMin}–{block.repMax} reps
-          </Text>
-          {!!missingAt && (
-            <Text className="text-sm text-warning">Not at {missingAt}. Swap or remove it.</Text>
-          )}
-          {!!standsInFor && <Text className="text-sm text-muted">In place of {standsInFor}</Text>}
-          {!!advice && <Text className="text-sm text-accent-soft-foreground">{advice}</Text>}
+        <View className="flex-1 gap-0.5">
+          <Pressable
+            className="gap-0.5"
+            accessibilityRole="link"
+            onPress={() => router.push({ pathname: "/exercise/[id]", params: { id: exercise.id } })}
+          >
+            {block.supersetGroup !== null && <Label>{t("superset")}</Label>}
+            <Heading level={3}>{exercise.name}</Heading>
+            <Meta
+              items={[
+                format.list(primaryMuscles(exercise).map((m) => muscleLabels[m])),
+                t("repRange", { range: format.range(block.repMin, block.repMax) }),
+              ]}
+            />
+            {!!missingAt && <Note tone="warning">{t("notAtGym", { gym: missingAt })}</Note>}
+            {!!standsInFor && <Note>{t("inPlaceOf", { name: standsInFor })}</Note>}
+            {!!advice && <Note tone="tint">{advice}</Note>}
+          </Pressable>
+          {/* Outside the link, so screen readers reach Undo on its own. */}
           {ai && (
             <View className="flex-row items-center gap-1.5">
-              <AiMark size={14} color="accent-soft-foreground" />
-              <Text className="flex-1 text-sm text-accent-soft-foreground" numberOfLines={2}>
+              <Icon name="analysis" size={16} tone="tint" />
+              <Note tone="tint" className="flex-1">
                 {ai.reason}
-              </Text>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Undo what the model changed"
-                hitSlop={8}
-                onPress={ai.undo}
-              >
-                <Text className="text-sm font-medium text-accent-soft-foreground underline">
-                  Undo
-                </Text>
-              </Pressable>
+              </Note>
+              <LinkButton accessibilityHint={t("undoModelChange")} onPress={ai.undo}>
+                {strings.undo}
+              </LinkButton>
             </View>
           )}
-        </Pressable>
+        </View>
         <ActionMenu
-          accessibilityLabel={`${exercise.name} options`}
+          accessibilityLabel={t("optionsFor", { name: exercise.name })}
           sections={[
             {
               actions: [
-                { key: "swap", label: "Swap exercise", icon: "swap-horizontal", onPress: onSwap },
+                {
+                  key: "swap",
+                  label: t("swapExercise"),
+                  icon: "swap",
+                  onPress: onSwap,
+                },
                 {
                   key: "superset",
-                  label: block.supersetGroup !== null ? "Split superset" : "Superset with next",
-                  icon: "link-outline",
+                  label: block.supersetGroup !== null ? t("splitSuperset") : t("supersetWithNext"),
+                  icon: "link",
                   disabled: isLast && block.supersetGroup === null,
                   onPress: () => write(() => toggleSuperset(block.id)),
                 },
                 {
                   key: "warmup",
-                  label: "Add warm-up set",
-                  icon: "flame-outline",
+                  label: t("addWarmupSet"),
+                  icon: "warmUp",
                   onPress: () => write(() => addSet(block.id, "warmup")),
                 },
                 {
                   key: "up",
-                  label: "Move up",
-                  icon: "arrow-up",
+                  label: t("moveUp"),
+                  icon: "moveUp",
                   disabled: isFirst,
                   onPress: () => write(() => moveExercise(block.id, -1)),
                 },
                 {
                   key: "down",
-                  label: "Move down",
-                  icon: "arrow-down",
+                  label: t("moveDown"),
+                  icon: "moveDown",
                   disabled: isLast,
                   onPress: () => write(() => moveExercise(block.id, 1)),
                 },
@@ -189,12 +196,12 @@ export function ExerciseCard({
               actions: [
                 {
                   key: "remove",
-                  label: "Remove exercise",
-                  icon: "trash-outline",
+                  label: t("removeExercise"),
+                  icon: "delete",
                   destructive: true,
                   onPress: () => {
                     const undo = write(() => removeExercise(block.id));
-                    onUndo(`Removed ${exercise.name}`, () => write(undo));
+                    onUndo(t("removedExercise", { name: exercise.name }), () => write(undo));
                   },
                 },
               ],
@@ -203,14 +210,27 @@ export function ExerciseCard({
         />
       </View>
 
+      {/* Fixed grid columns: each header stays on one line, shrinking a little before it clips. */}
       <View className="flex-row items-center gap-1.5 px-1">
-        <SystemLabel className={columns.badge}>Set</SystemLabel>
-        <SystemLabel className={columns.previous}>Last</SystemLabel>
-        <SystemLabel className={twMerge(columns.weight, "text-center")}>
-          {bodyweight ? `+${unit}` : assisted ? `−${unit}` : unit}
-        </SystemLabel>
-        <SystemLabel className={twMerge(columns.reps, "text-center")}>Reps</SystemLabel>
-        <SystemLabel className={twMerge(columns.rir, "text-center")}>Feel</SystemLabel>
+        <Label className={columns.badge} {...fitted}>
+          {t("setColumn")}
+        </Label>
+        <Label className={columns.previous} {...fitted}>
+          {t("lastColumn")}
+        </Label>
+        <Label className={twMerge(columns.weight, "text-center")} {...fitted}>
+          {bodyweight
+            ? t("addedLoadUnit", { unit })
+            : assisted
+              ? t("assistLoadUnit", { unit })
+              : unit}
+        </Label>
+        <Label className={twMerge(columns.reps, "text-center")} {...fitted}>
+          {t("repsColumn")}
+        </Label>
+        <Label className={twMerge(columns.rir, "text-center")} {...fitted}>
+          {t("feelColumn")}
+        </Label>
         <View className={columns.done} />
       </View>
 
@@ -227,20 +247,23 @@ export function ExerciseCard({
           onEffort={(effort) => write(() => rateSet(row.id, effort))}
           onDelete={() => {
             const undo = write(() => deleteSet(row.id));
-            onUndo("Set deleted", () => write(undo));
+            onUndo(t("setDeleted"), () => write(undo));
           }}
         />
       ))}
 
       {plates && plates.length > 0 && (
-        <Text className="px-1 text-sm text-muted">
-          Per side: {plates.join(" · ")} {gym!.unit}
-        </Text>
+        <View className="flex-row flex-wrap items-center gap-x-2 px-1">
+          <Note>{t("perSide")}</Note>
+          <Meta
+            items={plates.map((p) => format.unit(p, gym!.unit === "kg" ? "kilogram" : "pound", 2))}
+          />
+        </View>
       )}
 
-      <SystemButton variant="ghost" icon="add" onPress={() => write(() => addSet(block.id))}>
-        Add set
-      </SystemButton>
-    </View>
+      <Button variant="ghost" icon="add" onPress={() => write(() => addSet(block.id))}>
+        {t("addSet")}
+      </Button>
+    </Panel>
   );
 }

@@ -1,32 +1,48 @@
 import { useState } from "react";
+// eslint-disable-next-line no-restricted-imports -- the set grid's compact inputs (MIGRATION P1.2 sets)
 import { Pressable, TextInput, View } from "react-native";
-import { useThemeColor } from "heroui-native";
 import { twMerge } from "tailwind-merge";
-import { SystemIcon, SystemText as Text } from "@/components/system";
-import { ActionMenu } from "@/components/ui";
 import type { Effort, SetKind } from "@/db";
-import { loadValue, setText } from "@/lib/format";
+import { loadValue, useLiftFormat } from "@/lib/format";
 import { parseNumber, toKg, type Units } from "@/lib/metrics";
+import { useStore } from "@/lib/store";
+import type { Message } from "@/lib/translations";
 import type { SetRow as Row } from "@/lib/workouts";
+import { ActionMenu, Icon, SignalCell, Text, tokens } from "@/vector";
 import { EffortDot, effortOf } from "./effort";
 
-const kindBadges: Record<SetKind, string> = { warmup: "W", working: "", drop: "D", myo: "M" };
-const kindNames: Record<SetKind, string> = {
-  warmup: "Warm-up",
-  working: "Working set",
-  drop: "Drop set",
-  myo: "Myo-reps",
+const kindBadges: Record<SetKind, Message | ""> = {
+  warmup: "setKindWarmupShort",
+  working: "",
+  drop: "setKindDropShort",
+  myo: "setKindMyoShort",
+};
+const kindNames: Record<SetKind, Message> = {
+  warmup: "setKindWarmup",
+  working: "setKindWorking",
+  drop: "setKindDrop",
+  myo: "setKindMyo",
 };
 
 /** Column widths shared by the header and every row, so they line up. */
 export const columns = {
   badge: "w-9",
   previous: "flex-1",
-  weight: "w-[72px]",
+  weight: "w-18",
   reps: "w-14",
   rir: "w-11",
   done: "w-11",
 };
+
+/**
+ * For the grid's column-header Labels (one line by default): shrinking to 80% before a fixed column clips them,
+ * capped so the grid keeps its shape.
+ */
+export const fitted = {
+  adjustsFontSizeToFit: true,
+  minimumFontScale: 0.8,
+  maxFontSizeMultiplier: 1.3,
+} as const;
 
 const clean = (text: string) => text.replace(",", ".").trim();
 
@@ -52,8 +68,8 @@ export function SetRowView({
   onEffort: (effort: Effort | null) => void;
   onDelete: () => void;
 }) {
-  const placeholder = useThemeColor("field-placeholder");
-  const foreground = useThemeColor("foreground");
+  const { t } = useStore();
+  const { setText } = useLiftFormat();
   const done = !!row.completedAt;
   const text = {
     weight: row.weightKg !== null ? loadValue(row.weightKg, units) : "",
@@ -86,40 +102,40 @@ export function SetRowView({
     if (next.weightKg !== row.weightKg || next.reps !== row.reps) onChange(next);
   };
 
-  const input = "h-11 rounded-xl bg-surface-secondary px-1 text-center font-mono text-base";
+  // The set grid keeps its own compact inputs (Field is too wide for a row of four), in the field's tokens.
+  const input =
+    "h-11 rounded-control border border-field-border bg-field px-1 text-center text-field-foreground focus:border-focus";
+  const inputFont = { fontFamily: tokens.fonts.mono, fontSize: 16 };
   const target = {
     weight: row.targetWeightKg !== null ? loadValue(row.targetWeightKg, units) : "",
     reps: row.targetReps !== null ? String(row.targetReps) : "",
   };
-  const badge = kindBadges[row.kind] || String(number);
+  const kindBadge = kindBadges[row.kind];
+  const badge = kindBadge ? t(kindBadge) : String(number);
+  const set = t("setBadge", { badge });
   return (
-    <View
-      className={twMerge(
-        "flex-row items-center gap-1.5 rounded-xl px-1 py-1",
-        done && "bg-success-soft"
-      )}
-    >
+    <View className="flex-row items-center gap-1.5 px-1 py-1">
       <View className={columns.badge}>
         <ActionMenu
-          accessibilityLabel={`${kindNames[row.kind]} ${badge}, options`}
+          accessibilityLabel={t("setKindOptions", { kind: t(kindNames[row.kind]), badge })}
           trigger={
-            <Pressable className="h-11 items-center justify-center rounded-xl">
-              <Text
-                className={twMerge(
-                  "font-mono font-semibold",
-                  row.kind === "working" ? "text-foreground" : "text-warning"
-                )}
-              >
+            // 36pt wide in the grid; the slop makes the target 44.
+            <Pressable
+              hitSlop={4}
+              className="h-11 items-center justify-center rounded-control active:bg-surface-secondary"
+            >
+              {/* Warm-up, drop and myo sets read as a muted letter; working sets as their number. */}
+              <Text variant="readoutS" tone={row.kind === "working" ? "default" : "muted"}>
                 {badge}
               </Text>
             </Pressable>
           }
           sections={[
             {
-              title: "Set type",
+              title: t("setType"),
               actions: (Object.keys(kindNames) as SetKind[]).map((kind) => ({
                 key: kind,
-                label: kindNames[kind],
+                label: t(kindNames[kind]),
                 selected: row.kind === kind,
                 onPress: () => onKind(kind),
               })),
@@ -128,8 +144,8 @@ export function SetRowView({
               actions: [
                 {
                   key: "delete",
-                  label: "Delete set",
-                  icon: "trash-outline",
+                  label: t("deleteSet"),
+                  icon: "delete",
                   destructive: true,
                   onPress: onDelete,
                 },
@@ -138,33 +154,35 @@ export function SetRowView({
           ]}
         />
       </View>
-      <Text
-        className={twMerge(columns.previous, "font-mono text-xs text-muted")}
-        numberOfLines={1}
-        adjustsFontSizeToFit
-        minimumFontScale={0.8}
-      >
-        {previous ? setText(previous, units, true) : "–"}
-      </Text>
+      <View className={columns.previous}>
+        {/* The one flexible column: a long line wraps inside the row's 44pt height instead of clipping. */}
+        <Text variant="readoutXS" tone="muted" maxFontSizeMultiplier={fitted.maxFontSizeMultiplier}>
+          {previous ? setText(previous, units, true) : "–"}
+        </Text>
+      </View>
       <TextInput
-        accessibilityLabel={`Set ${badge} weight`}
+        accessibilityLabel={t("setWeight", { set })}
         className={twMerge(columns.weight, input)}
-        style={{ color: String(foreground) }}
+        style={inputFont}
+        maxFontSizeMultiplier={fitted.maxFontSizeMultiplier}
         value={weight}
         placeholder={target.weight || "0"}
-        placeholderTextColor={String(placeholder)}
+        placeholderTextColorClassName="accent-field-placeholder"
+        selectionColorClassName="accent-tint"
         onChangeText={setWeight}
         onEndEditing={commit}
         keyboardType="decimal-pad"
         selectTextOnFocus
       />
       <TextInput
-        accessibilityLabel={`Set ${badge} reps`}
+        accessibilityLabel={t("setReps", { set })}
         className={twMerge(columns.reps, input)}
-        style={{ color: String(foreground) }}
+        style={inputFont}
+        maxFontSizeMultiplier={fitted.maxFontSizeMultiplier}
         value={reps}
         placeholder={target.reps || "0"}
-        placeholderTextColor={String(placeholder)}
+        placeholderTextColorClassName="accent-field-placeholder"
+        selectionColorClassName="accent-tint"
         onChangeText={setReps}
         onEndEditing={commit}
         keyboardType="number-pad"
@@ -173,22 +191,18 @@ export function SetRowView({
       {row.kind === "warmup" ? (
         <View className={columns.rir} />
       ) : (
-        <EffortDot effort={effortOf(row)} label={`Set ${badge}`} onChange={onEffort} />
+        <EffortDot effort={effortOf(row)} label={set} onChange={onEffort} />
       )}
-      <Pressable
+      {/* Done is the selection look (the icon): signal fill with a signal-ink check; the check is the cue. */}
+      <SignalCell
+        selected={done}
         accessibilityRole="checkbox"
-        accessibilityState={{ checked: done }}
-        accessibilityLabel={`Set ${badge} done`}
-        hitSlop={6}
+        accessibilityLabel={t("setDone", { set })}
         onPress={() => onComplete(patch())}
-        className={twMerge(
-          columns.done,
-          "h-11 items-center justify-center rounded-xl",
-          done ? "bg-success" : "bg-surface-secondary"
-        )}
+        className={twMerge(columns.done, "p-0")}
       >
-        <SystemIcon name="checkmark" size={22} color={done ? "success-foreground" : "muted"} />
-      </Pressable>
+        <Icon name="check" size={24} tone="muted" />
+      </SignalCell>
     </View>
   );
 }

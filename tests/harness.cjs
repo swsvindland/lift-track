@@ -58,6 +58,14 @@ function database() {
   return { sqlite, db: drizzle(client, { schema }) };
 }
 
+/** The translations module on this database; the phone's language is `device` until one is saved. */
+function translations(db, device = "en") {
+  return load("src/lib/translations.ts", {
+    "@/db": { db, ...schema },
+    "expo-localization": { getLocales: () => [{ languageCode: device }] },
+  });
+}
+
 /** The app's lifting modules wired to one in-memory database. */
 function lift() {
   const { db, sqlite } = database();
@@ -74,6 +82,7 @@ function lift() {
     "./metrics": metrics,
     "./progression": progression,
     "./strength": strength,
+    "./translations": translations(db),
   });
   const volume = load("src/lib/volume.ts", { "./strength": strength });
   const builder = load("src/lib/program-builder.ts", {
@@ -112,4 +121,4 @@ function lift() {
   };
 }
 
-module.exports = { load, database, schema, lift };
+module.exports = { load, database, schema, lift, translations };

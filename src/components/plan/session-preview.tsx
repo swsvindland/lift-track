@@ -1,13 +1,10 @@
 import { View } from "react-native";
-import { router, Stack } from "expo-router";
-import { useThemeColor } from "heroui-native";
-import { SystemButton, SystemLabel, SystemPanel, SystemText as Text } from "@/components/system";
-import { Screen } from "@/components/ui";
+import { router } from "expo-router";
 import { useQuery, write } from "@/lib/data";
 import { equipmentLabels, muscleLabels } from "@/lib/exercises";
 import type { Muscle } from "@/lib/exercises/types";
 import { useExercises } from "@/lib/exercise-store";
-import { adviceText, loadText, rirText } from "@/lib/format";
+import { useLiftFormat } from "@/lib/format";
 import {
   activeMeso,
   isDeloadWeek,
@@ -16,16 +13,25 @@ import {
   programProgress,
   skipSession,
   unskipSession,
-  type PlannedExercise,
   type SessionPlan,
 } from "@/lib/programs";
-import type { Units } from "@/lib/metrics";
 import { useStore } from "@/lib/store";
+import { useCount } from "@/lib/use-count";
 import { activeWorkout, workoutDetail } from "@/lib/workouts";
+import {
+  Button,
+  DetailScreen,
+  Label,
+  Meta,
+  Note,
+  Panel,
+  ScreenFooter,
+  SystemState,
+  Text,
+  Value,
+  useKitFormat,
+} from "@/vector";
 import { useSessionContext, useStartSession } from "./use-start-session";
-
-const targetText = (set: PlannedExercise["sets"][number], units: Units) =>
-  set.weightKg ? `${loadText(set.weightKg, units)} × ${set.reps}` : `${set.reps} reps`;
 
 /** Sets per primary muscle, most first: what the day trains. */
 function musclesOf(plan: SessionPlan) {
@@ -41,10 +47,11 @@ function musclesOf(plan: SessionPlan) {
  * needs, to get ready ahead of the gym. Start logs exactly this.
  */
 export function SessionPreview({ week, dayId }: { week: number; dayId: number }) {
-  const { units, weights } = useStore();
+  const { units, weights, t } = useStore();
+  const format = useKitFormat();
+  const { adviceText, loadText, rirText } = useLiftFormat();
+  const count = useCount();
   const { all, byId, settings } = useExercises();
-  const background = useThemeColor("background");
-  const foreground = useThemeColor("foreground");
   const contextFor = useSessionContext();
   const begin = useStartSession();
   const data = useQuery(() => {
@@ -68,24 +75,11 @@ export function SessionPreview({ week, dayId }: { week: number; dayId: number })
     };
   }, [week, dayId, units, weights, all, byId, settings]);
 
-  const header = (
-    <Stack.Screen
-      options={{
-        headerShown: true,
-        title: "Preview",
-        headerBackButtonDisplayMode: "minimal",
-        headerStyle: { backgroundColor: background },
-        headerTintColor: foreground,
-        contentStyle: { backgroundColor: background },
-      }}
-    />
-  );
   if (!data)
     return (
-      <Screen title="Preview" nativeHeader>
-        {header}
-        <Text className="text-muted">This session isn&apos;t in your program anymore.</Text>
-      </Screen>
+      <DetailScreen title={t("preview")}>
+        <SystemState kind="empty" message={t("sessionNotInProgram")} />
+      </DetailScreen>
     );
 
   const { detail, cell, context, busy, plan } = data;
@@ -94,126 +88,147 @@ export function SessionPreview({ week, dayId }: { week: number; dayId: number })
   const equipment = [...new Set(plan.exercises.map((e) => e.exercise.equipment))];
   const start = () => begin(detail, week, dayId, { replace: true });
 
-  const footer =
-    cell.state === "open" ? (
-      <SystemButton icon="barbell" onPress={() => router.replace("/workout")}>
-        Resume
-      </SystemButton>
-    ) : cell.state === "done" && cell.workoutId ? (
-      <SystemButton
-        variant="secondary"
-        onPress={() =>
-          router.replace({ pathname: "/session/[id]", params: { id: String(cell.workoutId) } })
-        }
-      >
-        See what you did
-      </SystemButton>
-    ) : busy ? (
-      <SystemButton icon="barbell" onPress={() => router.replace("/workout")}>
-        Resume workout in progress
-      </SystemButton>
-    ) : cell.state === "skipped" ? (
-      <SystemButton
-        variant="secondary"
-        onPress={() => write(() => unskipSession(detail.id, week, dayId))}
-      >
-        Unskip
-      </SystemButton>
-    ) : (
-      <View className="flex-row gap-2">
-        <SystemButton
+  const footer = (
+    <ScreenFooter>
+      {cell.state === "open" ? (
+        <Button size="lg" icon="lift" className="flex-1" onPress={() => router.replace("/workout")}>
+          {t("resume")}
+        </Button>
+      ) : cell.state === "done" && cell.workoutId ? (
+        <Button
           variant="secondary"
-          onPress={() => {
-            write(() => skipSession(detail.id, week, dayId));
-            router.back();
-          }}
+          size="lg"
+          className="flex-1"
+          onPress={() =>
+            router.replace({ pathname: "/session/[id]", params: { id: String(cell.workoutId) } })
+          }
         >
-          Skip
-        </SystemButton>
-        <SystemButton icon="play" className="flex-1" onPress={start}>
-          Start
-        </SystemButton>
-      </View>
-    );
+          {t("seeWhatYouDid")}
+        </Button>
+      ) : busy ? (
+        <Button size="lg" icon="lift" className="flex-1" onPress={() => router.replace("/workout")}>
+          {t("resumeWorkoutInProgress")}
+        </Button>
+      ) : cell.state === "skipped" ? (
+        <Button
+          variant="secondary"
+          size="lg"
+          className="flex-1"
+          onPress={() => write(() => unskipSession(detail.id, week, dayId))}
+        >
+          {t("unskip")}
+        </Button>
+      ) : (
+        <>
+          <Button
+            variant="secondary"
+            size="lg"
+            onPress={() => {
+              write(() => skipSession(detail.id, week, dayId));
+              router.back();
+            }}
+          >
+            {t("skip")}
+          </Button>
+          <Button size="lg" icon="play" className="flex-1" onPress={start}>
+            {t("start")}
+          </Button>
+        </>
+      )}
+    </ScreenFooter>
+  );
 
   return (
-    <Screen title={plan.day.name} nativeHeader footer={footer}>
-      {header}
+    // The day is the title (native bar); program, week and gym lead the content.
+    <DetailScreen title={plan.day.name} footer={footer}>
       <View className="gap-1">
-        <SystemLabel>
-          {detail.name} · {isDeloadWeek(detail, week) ? "Deload" : `Week ${week + 1}`}
-        </SystemLabel>
-        <Text accessibilityRole="header" className="text-3xl font-semibold">
-          {plan.day.name}
-        </Text>
-        <Text className="text-muted">
-          {rirText(plan.rir)} on every set
-          {context.gym ? ` · At ${context.gym.name}` : ""}
-          {context.travel ? ", with stand-ins for what it doesn't have" : ""}
-        </Text>
+        <Meta
+          tone="default"
+          items={[
+            detail.name,
+            isDeloadWeek(detail, week) ? t("deload") : t("weekN", { n: format.number(week + 1) }),
+          ]}
+        />
+        <Meta
+          items={[
+            t("rirOnEverySet", { rir: rirText(plan.rir) }),
+            context.gym
+              ? t(context.travel ? "atGymTravel" : "atGym", { gym: context.gym.name })
+              : "",
+          ]}
+        />
       </View>
 
-      {busy && cell.state !== "open" && (
-        <Text className="text-sm text-warning">
-          Another workout is in progress. Finish it to start this one.
-        </Text>
-      )}
-      {cell.state === "upcoming" && (
-        <Text className="text-sm text-muted">
-          Not next yet: targets can still change with what you log before then.
-        </Text>
-      )}
-      {cell.state === "skipped" && (
-        <Text className="text-sm text-muted">You skipped this session.</Text>
-      )}
+      {busy && cell.state !== "open" && <Note tone="warning">{t("anotherWorkoutOpen")}</Note>}
+      {cell.state === "upcoming" && <Note>{t("notNextYet")}</Note>}
+      {cell.state === "skipped" && <Note>{t("youSkippedSession")}</Note>}
 
       <View className="flex-row gap-3">
-        {[
-          ["Exercises", String(plan.exercises.length)],
-          ["Sets", String(sets)],
-        ].map(([label, value]) => (
-          <SystemPanel key={label} className="flex-1 gap-1 p-4">
-            <SystemLabel>{label}</SystemLabel>
-            <Text className="font-mono text-lg">{value}</Text>
-          </SystemPanel>
-        ))}
+        <Panel className="flex-1">
+          <Label>{t("exercises")}</Label>
+          <Value size="m" value={format.number(plan.exercises.length)} />
+        </Panel>
+        <Panel className="flex-1">
+          <Label>{t("sets")}</Label>
+          <Value size="m" value={format.number(sets)} />
+        </Panel>
       </View>
 
-      <SystemPanel className="gap-3">
+      <Panel>
         <View className="gap-1">
-          <SystemLabel>Trains</SystemLabel>
-          <Text>
-            {muscles.map(([m, n]) => `${muscleLabels[m]} ${n}`).join(" · ") || "Nothing counted"}
-          </Text>
+          <Label>{t("trains")}</Label>
+          {muscles.length ? (
+            <Meta
+              tone="default"
+              items={muscles.map(([m, n]) =>
+                t("muscleSets", { muscle: muscleLabels[m], n: format.number(n) })
+              )}
+            />
+          ) : (
+            <Text>{t("nothingCounted")}</Text>
+          )}
         </View>
         <View className="gap-1">
-          <SystemLabel>Equipment</SystemLabel>
-          <Text>{equipment.map((e) => equipmentLabels[e]).join(", ")}</Text>
+          <Label>{t("equipment")}</Label>
+          <Text>{format.list(equipment.map((e) => equipmentLabels[e]))}</Text>
         </View>
-      </SystemPanel>
+      </Panel>
 
       {plan.exercises.map(({ slot, exercise, reps, advice, sets: targets }) => {
         const why = adviceText(advice, units);
         return (
           <View key={slot.id} className="gap-1">
-            <Text className="font-semibold">{exercise.name}</Text>
+            <Text variant="bodyStrong">{exercise.name}</Text>
             {exercise.id !== slot.exerciseId && (
-              <Text className="text-sm text-muted">Stands in for {byId(slot.exerciseId).name}</Text>
+              <Note>{t("standsInFor", { name: byId(slot.exerciseId).name })}</Note>
             )}
-            <Text className="text-sm text-muted">
-              {targets.length} {targets.length === 1 ? "set" : "sets"} · {reps[0]}–{reps[1]} reps
-            </Text>
+            <Meta
+              items={[
+                count(targets.length, "setCountOne", "setCount"),
+                t("repRange", { range: format.range(reps[0], reps[1]) }),
+              ]}
+            />
             {targets.map((s, i) => (
-              <Text key={i} className="font-mono text-sm">
-                {i + 1}
-                {"  "}
-                {targetText(s, units)}
-              </Text>
+              <View key={i} className="flex-row gap-3">
+                <View className="min-w-6">
+                  <Text variant="readoutS" tone="muted">
+                    {format.number(i + 1)}
+                  </Text>
+                </View>
+                <Text variant="readoutS">
+                  {s.weightKg
+                    ? t("loadTimesReps", {
+                        load: loadText(s.weightKg, units),
+                        reps: format.number(s.reps),
+                      })
+                    : count(s.reps, "repCountOne", "repCount")}
+                </Text>
+              </View>
             ))}
-            {!!why && <Text className="text-sm text-muted">{why}</Text>}
+            {!!why && <Note>{why}</Note>}
           </View>
         );
       })}
-    </Screen>
+    </DetailScreen>
   );
 }

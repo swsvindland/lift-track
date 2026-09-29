@@ -1,82 +1,76 @@
 import { View } from "react-native";
-import { Chip, SystemLabel, SystemPanel, SystemText as Text } from "@/components/system";
 import type { FeedbackRating, Soreness } from "@/db";
 import { useQuery, write } from "@/lib/data";
 import { muscleLabels } from "@/lib/exercises";
 import { useExercises } from "@/lib/exercise-store";
 import { feedbackFor, saveFeedback, saveSoreness, trainedMuscles } from "@/lib/programs";
+import { useStore } from "@/lib/store";
+import type { Message } from "@/lib/translations";
 import type { WorkoutDetail } from "@/lib/workouts";
+import { ChipRow, Heading, Panel } from "@/vector";
 
-const ratings: { value: FeedbackRating; label: string }[] = [
-  { value: "easy", label: "Easy" },
-  { value: "good", label: "Good" },
-  { value: "hard", label: "Hard" },
-  { value: "tooMuch", label: "Too much" },
-  { value: "pain", label: "Hurt" },
-];
+const ratings = [
+  "easy",
+  "good",
+  "hard",
+  "tooMuch",
+  "pain",
+] as const satisfies readonly FeedbackRating[];
+const ratingLabels: Record<FeedbackRating, Message> = {
+  easy: "feedbackEasy",
+  good: "feedbackGood",
+  hard: "feedbackHard",
+  tooMuch: "feedbackTooMuch",
+  pain: "feedbackPain",
+};
 
-const soreness: { value: Soreness; label: string }[] = [
-  { value: "fresh", label: "Not sore" },
-  { value: "justInTime", label: "Just recovered" },
-  { value: "sore", label: "Still sore" },
-];
+const soreness = ["fresh", "justInTime", "sore"] as const satisfies readonly Soreness[];
+const sorenessLabels: Record<Soreness, Message> = {
+  fresh: "sorenessFresh",
+  justInTime: "sorenessJustInTime",
+  sore: "sorenessSore",
+};
 
 /**
  * Two optional taps per muscle after a program session. Workload: Easy adds two sets next week,
  * Good one, Hard holds, Too much takes one away; Hurt holds and is worth a swap. Soreness coming
  * in speaks for the session that last trained the muscle: just recovered holds it, still sore
- * takes a set away. Unanswered muscles follow whether the reps were hit.
+ * takes a set away. Unanswered muscles follow whether the reps were hit. Tapping an answer again
+ * clears it.
  */
 export function MuscleFeedback({ detail }: { detail: WorkoutDetail }) {
+  const { t } = useStore();
   const { byId } = useExercises();
   const saved = useQuery(() => feedbackFor(detail.id), [detail.id]);
   const muscles = trainedMuscles(detail, byId);
   if (!muscles.length) return null;
   return (
-    <SystemPanel className="gap-3">
-      <View className="gap-1">
-        <SystemLabel>How did each muscle feel?</SystemLabel>
-        <Text className="text-sm text-muted">
-          Optional: how much it was, then how sore you were coming in. Next week&apos;s sets follow
-          this; skip it and your reps decide.
-        </Text>
-      </View>
+    <Panel>
+      <Panel.Title>{t("muscleFeedbackTitle")}</Panel.Title>
+      <Panel.Description>{t("muscleFeedbackNote")}</Panel.Description>
       {muscles.map((muscle) => {
         const answer = saved.find((f) => f.muscle === muscle);
+        const name = muscleLabels[muscle];
         return (
           <View key={muscle} className="gap-2">
-            <Text className="font-medium">{muscleLabels[muscle]}</Text>
-            <View className="flex-row flex-wrap gap-2">
-              {ratings.map((r) => (
-                <Chip
-                  key={r.value}
-                  label={r.label}
-                  selected={answer?.rating === r.value}
-                  onPress={() =>
-                    write(() =>
-                      saveFeedback(detail.id, muscle, answer?.rating === r.value ? null : r.value)
-                    )
-                  }
-                />
-              ))}
-            </View>
-            <View className="flex-row flex-wrap gap-2">
-              {soreness.map((r) => (
-                <Chip
-                  key={r.value}
-                  label={r.label}
-                  selected={answer?.soreness === r.value}
-                  onPress={() =>
-                    write(() =>
-                      saveSoreness(detail.id, muscle, answer?.soreness === r.value ? null : r.value)
-                    )
-                  }
-                />
-              ))}
-            </View>
+            <Heading level={4}>{name}</Heading>
+            <ChipRow
+              values={ratings}
+              value={answer?.rating ?? null}
+              onChange={(rating) => write(() => saveFeedback(detail.id, muscle, rating))}
+              label={(rating) => t(ratingLabels[rating])}
+              accessibilityLabel={t("workloadFor", { muscle: name })}
+            />
+            <ChipRow
+              values={soreness}
+              value={answer?.soreness ?? null}
+              onChange={(value) => write(() => saveSoreness(detail.id, muscle, value))}
+              label={(value) => t(sorenessLabels[value])}
+              accessibilityLabel={t("sorenessFor", { muscle: name })}
+            />
           </View>
         );
       })}
-    </SystemPanel>
+    </Panel>
   );
 }

@@ -81,57 +81,63 @@ struct SetView: View {
   }
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 6) {
-      Text(exercise.name)
-        .font(.headline)
-        .lineLimit(2)
-        .minimumScaleFactor(0.75)
-      HStack {
-        Text("\(setLabel) · \(exercise.repMin)–\(exercise.repMax)")
-          .foregroundStyle(set.kind == .working ? Color.secondary : Color.orange)
-          .lineLimit(1)
-        Spacer(minLength: 4)
-        if let bpm = session.heartRate {
-          Label("\(bpm)", systemImage: "heart.fill")
-            .labelStyle(.titleAndIcon)
-            .foregroundStyle(.red)
-            .monospacedDigit()
-        }
-      }
-      .font(.footnote)
-
-      HStack(spacing: 6) {
-        ValueTile(value: loadText(weightKg, unit: unit), caption: unit, focused: focus == .weight)
-          .focusable()
-          .focused($focus, equals: .weight)
-          .digitalCrownRotation(
-            $loadIndex, from: 0, through: Double(max(exercise.loads.count - 1, 0)), by: 1,
-            sensitivity: .low, isContinuous: false, isHapticFeedbackEnabled: true
-          )
-          .onTapGesture { focus = .weight }
-          .accessibilityLabel("Weight \(loadText(weightKg, unit: unit)) \(unit)")
-        ValueTile(value: "\(Int(reps.rounded()))", caption: "reps", focused: focus == .reps)
-          .focusable()
-          .focused($focus, equals: .reps)
-          .digitalCrownRotation(
-            $reps, from: 0, through: 100, by: 1,
-            sensitivity: .low, isContinuous: false, isHapticFeedbackEnabled: true
-          )
-          .onTapGesture { focus = .reps }
-          .accessibilityLabel("\(Int(reps.rounded())) reps")
-      }
-
-      Button {
-        Phone.shared.log(
-          exercise: exercise, set: set, weightKg: weightKg, reps: Int(reps.rounded()), next: next)
-      } label: {
-        Label("Log", systemImage: "checkmark")
+    // Scrolls when Dynamic Type or a small Watch makes the set taller than the screen.
+    ScrollView {
+      VStack(alignment: .leading, spacing: 6) {
+        Text(exercise.name)
           .font(.headline)
-          .frame(maxWidth: .infinity)
+          .lineLimit(2)
+          .minimumScaleFactor(0.75)
+        HStack {
+          Text("\(setLabel) · \(exercise.repMin)–\(exercise.repMax)")
+            .foregroundStyle(.secondary)
+            .lineLimit(1)
+          Spacer(minLength: 4)
+          if let bpm = session.heartRate {
+            Label("\(bpm)", systemImage: "heart.fill")
+              .labelStyle(.titleAndIcon)
+              .foregroundStyle(.red)
+              .monospacedDigit()
+          }
+        }
+        .font(.footnote)
+
+        HStack(spacing: 6) {
+          ValueTile(value: loadText(weightKg, unit: unit), caption: unit, focused: focus == .weight)
+            .focusable()
+            .focused($focus, equals: .weight)
+            .digitalCrownRotation(
+              $loadIndex, from: 0, through: Double(max(exercise.loads.count - 1, 0)), by: 1,
+              sensitivity: .low, isContinuous: false, isHapticFeedbackEnabled: true
+            )
+            .onTapGesture { focus = .weight }
+            .accessibilityLabel("Weight \(loadText(weightKg, unit: unit)) \(unit)")
+          ValueTile(value: "\(Int(reps.rounded()))", caption: "reps", focused: focus == .reps)
+            .focusable()
+            .focused($focus, equals: .reps)
+            .digitalCrownRotation(
+              $reps, from: 0, through: 100, by: 1,
+              sensitivity: .low, isContinuous: false, isHapticFeedbackEnabled: true
+            )
+            .onTapGesture { focus = .reps }
+            .accessibilityLabel("\(Int(reps.rounded())) reps")
+        }
+
+        Button {
+          Phone.shared.log(
+            exercise: exercise, set: set, weightKg: weightKg, reps: Int(reps.rounded()), next: next)
+        } label: {
+          Label("Log", systemImage: "checkmark")
+            .font(.headline)
+            .frame(maxWidth: .infinity)
+        }
+        .vectorPrimaryButton()
+        .vectorPrimaryAction()
+        .vectorHiddenWhenDimmed()
       }
-      .buttonStyle(WideButtonStyle(tint: .green))
+      .frame(maxWidth: .infinity, alignment: .topLeading)
     }
-    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    .vectorWatchTypeCap()
     // Reps change most from set to set, so the crown starts on them.
     // Set after the first layout: an initial focus value is overridden by the first focusable tile.
     .onAppear { DispatchQueue.main.async { focus = .reps } }
@@ -144,23 +150,14 @@ struct ValueTile: View {
   let focused: Bool
 
   var body: some View {
-    VStack(spacing: 0) {
-      Text(value)
-        .font(.system(.title2, design: .rounded).weight(.semibold))
-        .monospacedDigit()
-        .lineLimit(1)
-        .minimumScaleFactor(0.6)
-      Text(caption)
-        .font(.caption2)
-        .foregroundStyle(.secondary)
+    VectorDataTile(focused: focused) {
+      VStack(spacing: 0) {
+        Text(value).vectorReadout(.title2, weight: .medium)
+        Text(caption)
+          .font(.caption2)
+          .foregroundStyle(.secondary)
+      }
     }
-    .frame(maxWidth: .infinity)
-    .padding(.vertical, 6)
-    .background(.quaternary, in: RoundedRectangle(cornerRadius: 12))
-    .overlay(
-      RoundedRectangle(cornerRadius: 12)
-        .strokeBorder(focused ? Color.accentColor : .clear, lineWidth: 2)
-    )
   }
 }
 
@@ -170,31 +167,36 @@ struct RestView: View {
   let rated: WatchSet?
 
   var body: some View {
-    VStack(spacing: 6) {
-      Text(timerInterval: Date()...max(rest.end, Date()), countsDown: true)
-        .font(.system(size: 44, weight: .semibold, design: .rounded))
-        .monospacedDigit()
-        .frame(maxWidth: .infinity)
-      Text(rest.label)
-        .font(.footnote)
-        .foregroundStyle(.secondary)
-        .lineLimit(1)
-      if let set = rated {
-        HStack(spacing: 6) {
-          ForEach(Effort.allCases) { effort in
-            EffortButton(effort: effort, selected: set.effort == effort) {
-              Phone.shared.rate(set.id, effort)
+    ScrollView {
+      VStack(spacing: 6) {
+        Text(timerInterval: Date()...max(rest.end, Date()), countsDown: true)
+          .vectorReadout(.largeTitle, weight: .medium)
+          .frame(maxWidth: .infinity)
+        Text(rest.label)
+          .font(.footnote)
+          .foregroundStyle(.secondary)
+          .lineLimit(1)
+        if let set = rated {
+          HStack(spacing: 6) {
+            ForEach(Effort.allCases) { effort in
+              EffortButton(effort: effort, selected: set.effort == effort) {
+                Phone.shared.rate(set.id, effort)
+              }
             }
           }
+          .vectorHiddenWhenDimmed()
         }
+        Button {
+          Phone.shared.skipRest()
+        } label: {
+          Text("Skip rest").frame(maxWidth: .infinity)
+        }
+        .vectorSecondaryButton()
+        .vectorPrimaryAction()
+        .vectorHiddenWhenDimmed()
       }
-      Button {
-        Phone.shared.skipRest()
-      } label: {
-        Text("Skip rest").frame(maxWidth: .infinity)
-      }
-      .buttonStyle(WideButtonStyle(tint: nil))
     }
+    .vectorWatchTypeCap()
   }
 }
 
@@ -221,23 +223,18 @@ struct EffortButton: View {
 
   var body: some View {
     Button(action: action) {
-      VStack(spacing: 2) {
-        Circle()
-          .fill(effort.color)
-          .frame(width: 22, height: 22)
-          .overlay {
-            if selected {
-              Image(systemName: "checkmark").font(.caption2.weight(.bold)).foregroundStyle(.black)
-            }
-          }
-        Text(label).font(.caption2)
+      VStack(spacing: 3) {
+        EffortMark(level: effort.level)
+        Text(label).font(.caption2).lineLimit(1).minimumScaleFactor(0.8)
       }
-      .frame(maxWidth: .infinity)
-      .padding(.vertical, 4)
-      .background(
-        RoundedRectangle(cornerRadius: 10)
-          .fill(selected ? effort.color.opacity(0.3) : Color.clear)
+      // Selected is the icon look: signal fill, #071017 content. A capsule, the Watch's control shape.
+      .foregroundStyle(selected ? VectorColor.signalInk : Color.primary)
+      .frame(maxWidth: .infinity, minHeight: VectorMetrics.minTarget)
+      .background(Capsule().fill(selected ? VectorColor.signal : Color.clear))
+      .overlay(
+        Capsule().strokeBorder(selected ? Color.clear : Color.primary.opacity(0.3), lineWidth: 1)
       )
+      .contentShape(Capsule())
     }
     .buttonStyle(.plain)
     .accessibilityLabel("\(label), \(hint)")
@@ -248,41 +245,51 @@ struct EffortButton: View {
 /// Every set is logged: finish here to stop the clock. The questions wait on the phone.
 struct DoneView: View {
   var body: some View {
-    VStack(spacing: 6) {
-      Image(systemName: "checkmark.circle.fill")
-        .font(.title)
-        .foregroundStyle(.green)
-      Text("All sets logged")
-        .font(.headline)
-      Text("How it went waits on your iPhone.")
-        .font(.footnote)
-        .foregroundStyle(.secondary)
-        .multilineTextAlignment(.center)
-      Button {
-        Phone.shared.finish()
-      } label: {
-        Label("Finish", systemImage: "flag.checkered")
+    ScrollView {
+      VStack(spacing: 6) {
+        Image(systemName: VectorSymbol.done)
+          .font(.title)
+          .foregroundStyle(VectorColor.signal)
+        Text("All sets logged")
           .font(.headline)
-          .frame(maxWidth: .infinity)
+        Text("How it went waits on your iPhone.")
+          .font(.footnote)
+          .foregroundStyle(.secondary)
+          .multilineTextAlignment(.center)
+        Button {
+          Phone.shared.finish()
+        } label: {
+          Label("Finish", systemImage: "flag.checkered")
+            .font(.headline)
+            .frame(maxWidth: .infinity)
+        }
+        .vectorPrimaryButton()
+        .vectorPrimaryAction()
+        .vectorHiddenWhenDimmed()
       }
-      .buttonStyle(WideButtonStyle(tint: .accentColor))
     }
+    .vectorWatchTypeCap()
   }
 }
 
-/// A capsule as wide as the screen. Watch bordered buttons keep an inset, so they sit narrower
-/// than the tiles above them.
-struct WideButtonStyle: ButtonStyle {
-  /// Nil is the quiet gray button.
-  let tint: Color?
+/// Effort as 1–3 ascending bars: the count carries the meaning, not a hue. Filled bars take the
+/// current foreground; empty ones are outlined.
+struct EffortMark: View {
+  let level: Int
 
-  func makeBody(configuration: Configuration) -> some View {
-    configuration.label
-      .font(.headline)
-      .foregroundStyle(tint == nil ? Color.white : Color.black)
-      .frame(maxWidth: .infinity, minHeight: 48)
-      .background(Capsule().fill(tint ?? Color.white.opacity(0.18)))
-      .opacity(configuration.isPressed ? 0.7 : 1)
-      .contentShape(Capsule())
+  var body: some View {
+    HStack(alignment: .bottom, spacing: 2) {
+      ForEach(1...3, id: \.self) { i in
+        let filled = i <= level
+        RoundedRectangle(cornerRadius: 1)
+          .fill(filled ? AnyShapeStyle(.foreground) : AnyShapeStyle(Color.clear))
+          .overlay(
+            RoundedRectangle(cornerRadius: 1)
+              .strokeBorder(filled ? Color.clear : Color.primary.opacity(0.4), lineWidth: 1)
+          )
+          .frame(width: 3, height: CGFloat(3 + 3 * i))
+      }
+    }
+    .accessibilityHidden(true)
   }
 }

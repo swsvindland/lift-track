@@ -1,13 +1,5 @@
 import { useMemo, useState } from "react";
-import { Pressable, ScrollView, View } from "react-native";
-import {
-  Chip,
-  SystemButton,
-  SystemIcon,
-  SystemLabel,
-  SystemText as Text,
-} from "@/components/system";
-import { Editor, SearchInput } from "@/components/ui";
+import { View } from "react-native";
 import { useQuery } from "@/lib/data";
 import {
   equipmentLabels,
@@ -20,13 +12,25 @@ import {
 } from "@/lib/exercises";
 import { muscles, type Muscle } from "@/lib/exercises/types";
 import { useExercises } from "@/lib/exercise-store";
+import { useStore } from "@/lib/store";
 import { exerciseUsage } from "@/lib/workouts";
 import { describeExercise } from "@/lib/lift-ai";
 import { useModel } from "@/lib/use-model";
-import { AiMark } from "@/components/ai-mark";
+import {
+  Button,
+  ChipRow,
+  Editor,
+  Icon,
+  ListRow,
+  Note,
+  Panel,
+  SearchInput,
+  useKitFormat,
+} from "@/vector";
 
 const LIMIT = 60;
 
+/** An exercise in a row list (a direct child of `Panel inset="none"`): name, primary muscles and equipment. */
 export function ExerciseRow({
   exercise,
   onPress,
@@ -38,30 +42,19 @@ export function ExerciseRow({
   detail?: string;
   favorite?: boolean;
 }) {
+  const { t } = useStore();
+  const format = useKitFormat();
+  const trained = format.list(primaryMuscles(exercise).map((m) => muscleLabels[m]));
+  const equipment = equipmentLabels[exercise.equipment];
   return (
-    <Pressable
-      accessibilityRole="button"
+    <ListRow
+      title={exercise.name}
+      description={
+        detail ?? (trained ? t("exerciseDetail", { muscles: trained, equipment }) : equipment)
+      }
+      trailing={favorite ? <Icon name="favorite" size={16} tone="muted" /> : "none"}
       onPress={onPress}
-      className="flex-row items-center gap-3 border-b border-separator py-3 active:opacity-60"
-    >
-      <View className="flex-1 gap-0.5">
-        <Text className="font-medium" numberOfLines={1}>
-          {exercise.name}
-        </Text>
-        <Text className="text-sm text-muted" numberOfLines={1}>
-          {detail ??
-            [
-              primaryMuscles(exercise)
-                .map((m) => muscleLabels[m])
-                .join(", "),
-              equipmentLabels[exercise.equipment],
-            ]
-              .filter(Boolean)
-              .join(" · ")}
-        </Text>
-      </View>
-      {favorite && <SystemIcon name="star" size={16} color="warning" />}
-    </Pressable>
+    />
   );
 }
 
@@ -72,7 +65,7 @@ export function ExercisePicker({
   onPick,
   replacing,
   gym,
-  title = "Add exercise",
+  title,
 }: {
   open: boolean;
   close: () => void;
@@ -82,6 +75,8 @@ export function ExercisePicker({
   gym?: GymAccess;
   title?: string;
 }) {
+  const { t } = useStore();
+  const format = useKitFormat();
   const [query, setQuery] = useState("");
   const [muscle, setMuscle] = useState<Muscle | null>(null);
   const [described, setDescribed] = useState<Exercise[] | null>(null);
@@ -111,8 +106,17 @@ export function ExercisePicker({
     setQuery("");
     setMuscle(null);
   };
+  const rows = (list: Exercise[]) =>
+    list.map((e) => (
+      <ExerciseRow
+        key={e.id}
+        exercise={e}
+        favorite={settingFor(e.id)?.favorite}
+        onPress={() => pick(e)}
+      />
+    ));
   return (
-    <Editor title={title} open={open} close={close} compact>
+    <Editor title={title ?? t("addExercise")} open={open} close={close} compact>
       <SearchInput
         value={query}
         onChange={(value) => {
@@ -120,86 +124,69 @@ export function ExercisePicker({
           setDescribed(null);
           setAskError("");
         }}
-        placeholder="Search exercises"
-        accessibilityLabel="Search exercises"
+        placeholder={t("searchExercises")}
+        accessibilityLabel={t("searchExercises")}
       />
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled"
-      >
-        <View className="flex-row gap-2">
-          {muscles.map((m) => (
-            <Chip
-              key={m}
-              label={muscleLabels[m]}
-              selected={muscle === m}
-              onPress={() => setMuscle(muscle === m ? null : m)}
-            />
-          ))}
-        </View>
-      </ScrollView>
+      <ChipRow
+        values={muscles}
+        value={muscle}
+        onChange={setMuscle}
+        label={(m) => muscleLabels[m]}
+        accessibilityLabel={t("filterByMuscle")}
+      />
       {similar.length > 0 && (
-        <View>
-          <SystemLabel className="pt-2">Similar to {replacing?.name}</SystemLabel>
-          {similar.map((e) => (
-            <ExerciseRow
-              key={e.id}
-              exercise={e}
-              favorite={settingFor(e.id)?.favorite}
-              onPress={() => pick(e)}
-            />
-          ))}
-          <SystemLabel className="pt-4">All exercises</SystemLabel>
+        <Panel inset="none">
+          <Panel.Header eyebrow={t("similarTo", { name: replacing?.name ?? "" })} />
+          {rows(similar)}
+        </Panel>
+      )}
+      {results.length > 0 && (
+        <Panel inset="none">
+          {similar.length > 0 && <Panel.Header eyebrow={t("allExercises")} />}
+          {rows(results.slice(0, LIMIT))}
+        </Panel>
+      )}
+      {results.length > LIMIT && (
+        <Note className="text-center">
+          {t("moreKeepTyping", { n: format.number(results.length - LIMIT) })}
+        </Note>
+      )}
+      {!results.length && !described && (
+        <View className="items-center gap-3 py-6">
+          <Note className="text-center">{t("noExerciseMatchesAddOwn")}</Note>
+          {model.available && query.trim().split(/\s+/).length >= 2 && (
+            <Button
+              variant="secondary"
+              icon="analysis"
+              loading={asking}
+              loadingLabel={t("thinking")}
+              onPress={() => {
+                setAsking(true);
+                describeExercise(query, all, model.generate!)
+                  .then(setDescribed)
+                  .catch((e) => {
+                    setDescribed(null);
+                    setAskError(e instanceof Error ? e.message : "");
+                  })
+                  .finally(() => setAsking(false));
+              }}
+            >
+              {t("findFromDescription")}
+            </Button>
+          )}
+          {!!askError && <Note className="text-center">{askError}</Note>}
         </View>
       )}
-      <View>
-        {results.slice(0, LIMIT).map((e) => (
-          <ExerciseRow
-            key={e.id}
-            exercise={e}
-            favorite={settingFor(e.id)?.favorite}
-            onPress={() => pick(e)}
-          />
-        ))}
-        {results.length > LIMIT && (
-          <Text className="py-4 text-center text-sm text-muted">
-            {results.length - LIMIT} more · keep typing to narrow
-          </Text>
-        )}
-        {!results.length && !described && (
-          <View className="items-center gap-3 py-6">
-            <Text className="text-center text-muted">
-              No exercise matches. Add your own from the Exercises tab.
-            </Text>
-            {model.available && query.trim().split(/\s+/).length >= 2 && (
-              <SystemButton
-                variant="secondary"
-                icon={<AiMark size={18} color="accent-soft-foreground" />}
-                isDisabled={asking}
-                onPress={() => {
-                  setAsking(true);
-                  describeExercise(query, all, model.generate!)
-                    .then(setDescribed)
-                    .catch((e) => {
-                      setDescribed(null);
-                      setAskError(e instanceof Error ? e.message : "");
-                    })
-                    .finally(() => setAsking(false));
-                }}
-              >
-                {asking ? "Thinking…" : "Find it from the description"}
-              </SystemButton>
-            )}
-            {!!askError && <Text className="text-center text-sm text-muted">{askError}</Text>}
-          </View>
-        )}
-        {!results.length &&
-          described?.map((e) => <ExerciseRow key={e.id} exercise={e} onPress={() => pick(e)} />)}
-        {!results.length && described?.length === 0 && (
-          <Text className="py-4 text-center text-muted">Nothing close. Try other words.</Text>
-        )}
-      </View>
+      {!results.length && !!described?.length && (
+        <Panel inset="none">
+          {described.map((e) => (
+            <ExerciseRow key={e.id} exercise={e} onPress={() => pick(e)} />
+          ))}
+        </Panel>
+      )}
+      {!results.length && described?.length === 0 && (
+        <Note className="text-center">{t("nothingClose")}</Note>
+      )}
     </Editor>
   );
 }
