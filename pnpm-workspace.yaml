@@ -1,5 +1,6 @@
 allowBuilds:
   "@heroui-pro/react": true
+  '@shopify/react-native-skia': true
   '@zowe/secrets-for-zowe-sdk': true
   esbuild: true
   heroui-native-pro: true
