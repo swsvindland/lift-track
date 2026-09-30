@@ -5,8 +5,8 @@ import { useStore } from "@/lib/store";
 import type { Message } from "@/lib/translations";
 import { ActionMenu, SignalCell, Text, useHaptics, useSignalInk } from "@/vector";
 
-/* How hard a set felt, as one to three bars: three is 1 or fewer reps left, two 1–3, one more.
-   It stands in for reps in reserve; blank means "as prescribed". */
+/* How hard a set felt, as one to three bars in a colour: three red is 1 or fewer reps left, two amber 1–3,
+   one green more. It stands in for reps in reserve; blank means "as prescribed". */
 
 export const effortChoices: { value: Effort; label: Message; hint: Message }[] = [
   { value: "hard", label: "effortHard", hint: "effortHardHint" },
@@ -15,11 +15,17 @@ export const effortChoices: { value: Effort; label: Message; hint: Message }[] =
 ];
 
 const effortLevel: Record<Effort, number> = { easy: 1, good: 2, hard: 3 };
+/** The kit's status colours, which read at a glance mid-set; the bar count carries it without colour. */
+const effortFill: Record<Effort, string> = {
+  hard: "bg-danger",
+  good: "bg-warning",
+  easy: "bg-success",
+};
 const barHeights = ["h-1.5", "h-[9px]", "h-3"];
 
 /**
- * Effort as ascending bars, the same mark as the Watch: intensity, never a hue. Empty bars are outlined. In a
- * selected SignalCell the bars are signal ink, like the kit Text and Icon beside them.
+ * Effort as ascending bars in its colour, the same mark as the Watch. Empty bars are outlined. In a selected
+ * SignalCell the bars are signal ink, like the kit Text and Icon beside them.
  */
 export function EffortMark({ effort }: { effort: Effort | null }) {
   const onSignal = useSignalInk();
@@ -36,10 +42,10 @@ export function EffortMark({ effort }: { effort: Effort | null }) {
           className={twMerge(
             "w-[3px]",
             height,
-            i < level
+            effort && i < level
               ? onSignal
                 ? "bg-accent-foreground"
-                : "bg-foreground"
+                : effortFill[effort]
               : onSignal
                 ? "border border-accent-foreground"
                 : "border border-border-strong"

@@ -54,7 +54,7 @@ function useMinuteClock(active: boolean) {
 }
 
 export function TodayScreen() {
-  const { units, weights, locale, t } = useStore();
+  const { units, weights, healthSyncEnabled, locale, t } = useStore();
   const format = useKitFormat();
   const { dayLabel, duration, rirText } = useLiftFormat();
   const count = useCount();
@@ -92,7 +92,7 @@ export function TodayScreen() {
   const done = openSets.filter((s) => s.completedAt).length;
 
   const startProgramSession = useStartSession();
-  const begin = (from?: number) => {
+  const begin = (from: number) => {
     const { gym, travel } = trainingGym(units);
     write(() => startWorkout({ gymId: gym.id, travel, from }));
     router.push("/workout");
@@ -101,6 +101,10 @@ export function TodayScreen() {
   const weekLabel = (program: { rir: number[]; deload: boolean }, week: number) =>
     isDeloadWeek(program, week) ? t("deload") : t("weekN", { n: format.number(week + 1) });
   const setsUnit = (sets: number) => t(format.plural(sets) === "one" ? "unitSet" : "unitSets");
+  // Health keeps the weight up to date, so Today only asks for one when nothing came in this past week.
+  const weekAgo = new Date();
+  weekAgo.setDate(weekAgo.getDate() - 7);
+  const synced = healthSyncEnabled && !!weights[0] && new Date(weights[0].measuredAt) >= weekAgo;
   const latest = weights[0]
     ? format.unitParts(
         fromKg(weights[0].weightKg, units),
@@ -184,9 +188,6 @@ export function TodayScreen() {
               {t("start")}
             </Button>
           </Panel.Footer>
-          <Button variant="ghost" onPress={() => begin()}>
-            {t("emptyWorkoutInstead")}
-          </Button>
         </Panel>
       ) : (
         <Panel>
@@ -249,13 +250,15 @@ export function TodayScreen() {
         )}
       </Panel>
 
-      <Panel inset="none">
-        <ListRow
-          title={t("bodyWeight")}
-          value={latest ? <Value size="s" tone="muted" {...latest} /> : t("addWeight")}
-          onPress={() => router.push("/weight")}
-        />
-      </Panel>
+      {!synced && (
+        <Panel inset="none">
+          <ListRow
+            title={t("bodyWeight")}
+            value={latest ? <Value size="s" tone="muted" {...latest} /> : t("addWeight")}
+            onPress={() => router.push("/weight")}
+          />
+        </Panel>
+      )}
     </Screen>
   );
 }

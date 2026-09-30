@@ -10,17 +10,36 @@ the Watch never holds a workout of its own.
   the last workout) with **Start**. The phone starts it exactly as its own Start does.
 - **Set:** exercise, "Set 2 of 4 · 8–12", and heart rate. Load and reps are prefilled from the
   prescription. Tap a tile, then turn the crown. Reps take the crown first. Load steps through
-  what the workout's gym can make near the target. **Log** checks the set off in one tap.
+  what the workout's gym can make near the target. **Log** checks the set off in one tap. The list
+  button picks another exercise, for when the one up next has its rack taken.
 - **Rest:** after a working set that rests, you get a countdown, what's next, and Hard / Good / Easy
-  to rate the set (the phone's three effort colors, not typed RIR). **Skip rest** ends it. The Watch
-  taps your wrist when rest is over and shows the next set. Warm-ups and sets inside a superset
-  go straight to the next set.
+  to rate the set (the phone's red, amber and green effort bars, not typed RIR). **Skip rest** ends
+  it. The Watch taps your wrist when rest is over and shows the next set. Warm-ups and sets inside
+  a superset go straight to the next set.
 - **All sets logged:** **Finish** ends the workout on the phone, so the clock stops at the gym, not
   whenever you next open the phone. The phone saves the Health workout, and if it's still on the
   workout screen it moves to "Workout done". The post-session questions wait on the phone.
 
 A workout started on the phone opens Lift on the Watch (`HKHealthStore.startWatchApp`).
-Effort colors match the phone's (`--color-effort-*` in `src/global.css`, `Effort.color` on the Watch).
+Effort colors match the phone's: the kit's danger, warning and success tokens (`effortFill` in
+`src/components/workout/effort.tsx`, `Effort.color` on the Watch).
+
+## Which set is next
+
+The Watch follows where you are, not the order of the list:
+
+- After a set, it stays on that exercise while it has sets left. In a superset it moves to the next
+  exercise in the superset, and wraps back to the first one.
+- Once an exercise is done, it goes to the first exercise with sets left. An exercise you skipped
+  because its rack was taken comes back next, after the one you did instead.
+- Open sets before an exercise's last done set count as skipped (warm-ups nobody checked off), so
+  they don't hold it open.
+- The list button on the set screen picks another exercise. The pick leads until the next set is
+  logged, on the Watch or on the phone.
+
+The phone names the same exercise in its rest ("Next: Squat"): `upNext` in `src/lib/workouts.ts`
+and `Workout.current` in `targets/watch/Model.swift` follow the same rule. The Watch knows the
+latest set from each set's `doneAt` and the superset from each exercise's `superset`.
 
 ## Questions later
 

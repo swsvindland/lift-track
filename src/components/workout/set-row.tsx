@@ -8,7 +8,7 @@ import { parseNumber, toKg, type Units } from "@/lib/metrics";
 import { useStore } from "@/lib/store";
 import type { Message } from "@/lib/translations";
 import type { SetRow as Row } from "@/lib/workouts";
-import { ActionMenu, Icon, SignalCell, Text, tokens } from "@/vector";
+import { ActionMenu, Icon, SignalCell, SwipeRow, Text, tokens } from "@/vector";
 import { EffortDot, effortOf } from "./effort";
 
 const kindBadges: Record<SetKind, Message | ""> = {
@@ -114,95 +114,104 @@ export function SetRowView({
   const badge = kindBadge ? t(kindBadge) : String(number);
   const set = t("setBadge", { badge });
   return (
-    <View className="flex-row items-center gap-1.5 px-1 py-1">
-      <View className={columns.badge}>
-        <ActionMenu
-          accessibilityLabel={t("setKindOptions", { kind: t(kindNames[row.kind]), badge })}
-          trigger={
-            // 36pt wide in the grid; the slop makes the target 44.
-            <Pressable
-              hitSlop={4}
-              className="h-11 items-center justify-center rounded-control active:bg-surface-secondary"
-            >
-              {/* Warm-up, drop and myo sets read as a muted letter; working sets as their number. */}
-              <Text variant="readoutS" tone={row.kind === "working" ? "default" : "muted"}>
-                {badge}
-              </Text>
-            </Pressable>
-          }
-          sections={[
-            {
-              title: t("setType"),
-              actions: (Object.keys(kindNames) as SetKind[]).map((kind) => ({
-                key: kind,
-                label: t(kindNames[kind]),
-                selected: row.kind === kind,
-                onPress: () => onKind(kind),
-              })),
-            },
-            {
-              actions: [
-                {
-                  key: "delete",
-                  label: t("deleteSet"),
-                  icon: "delete",
-                  destructive: true,
-                  onPress: onDelete,
-                },
-              ],
-            },
-          ]}
+    // Swipe toward the start to delete, with Undo; the badge menu has Delete set too, for screen readers.
+    <SwipeRow
+      trailingAction={{ label: t("delete"), icon: "delete", destructive: true, onAction: onDelete }}
+    >
+      <View className="flex-row items-center gap-1.5 px-1 py-1">
+        <View className={columns.badge}>
+          <ActionMenu
+            accessibilityLabel={t("setKindOptions", { kind: t(kindNames[row.kind]), badge })}
+            trigger={
+              // 36pt wide in the grid; the slop makes the target 44.
+              <Pressable
+                hitSlop={4}
+                className="h-11 items-center justify-center rounded-control active:bg-surface-secondary"
+              >
+                {/* Warm-up, drop and myo sets read as a muted letter; working sets as their number. */}
+                <Text variant="readoutS" tone={row.kind === "working" ? "default" : "muted"}>
+                  {badge}
+                </Text>
+              </Pressable>
+            }
+            sections={[
+              {
+                title: t("setType"),
+                actions: (Object.keys(kindNames) as SetKind[]).map((kind) => ({
+                  key: kind,
+                  label: t(kindNames[kind]),
+                  selected: row.kind === kind,
+                  onPress: () => onKind(kind),
+                })),
+              },
+              {
+                actions: [
+                  {
+                    key: "delete",
+                    label: t("deleteSet"),
+                    icon: "delete",
+                    destructive: true,
+                    onPress: onDelete,
+                  },
+                ],
+              },
+            ]}
+          />
+        </View>
+        <View className={columns.previous}>
+          {/* The one flexible column: a long line wraps inside the row's 44pt height instead of clipping. */}
+          <Text
+            variant="readoutXS"
+            tone="muted"
+            maxFontSizeMultiplier={fitted.maxFontSizeMultiplier}
+          >
+            {previous ? setText(previous, units, true) : "–"}
+          </Text>
+        </View>
+        <TextInput
+          accessibilityLabel={t("setWeight", { set })}
+          className={twMerge(columns.weight, input)}
+          style={inputFont}
+          maxFontSizeMultiplier={fitted.maxFontSizeMultiplier}
+          value={weight}
+          placeholder={target.weight || "0"}
+          placeholderTextColorClassName="accent-field-placeholder"
+          selectionColorClassName="accent-tint"
+          onChangeText={setWeight}
+          onEndEditing={commit}
+          keyboardType="decimal-pad"
+          selectTextOnFocus
         />
+        <TextInput
+          accessibilityLabel={t("setReps", { set })}
+          className={twMerge(columns.reps, input)}
+          style={inputFont}
+          maxFontSizeMultiplier={fitted.maxFontSizeMultiplier}
+          value={reps}
+          placeholder={target.reps || "0"}
+          placeholderTextColorClassName="accent-field-placeholder"
+          selectionColorClassName="accent-tint"
+          onChangeText={setReps}
+          onEndEditing={commit}
+          keyboardType="number-pad"
+          selectTextOnFocus
+        />
+        {row.kind === "warmup" ? (
+          <View className={columns.rir} />
+        ) : (
+          <EffortDot effort={effortOf(row)} label={set} onChange={onEffort} />
+        )}
+        {/* Done is the selection look (the icon): signal fill with a signal-ink check; the check is the cue. */}
+        <SignalCell
+          selected={done}
+          accessibilityRole="checkbox"
+          accessibilityLabel={t("setDone", { set })}
+          onPress={() => onComplete(patch())}
+          className={twMerge(columns.done, "p-0")}
+        >
+          <Icon name="check" size={24} tone="muted" />
+        </SignalCell>
       </View>
-      <View className={columns.previous}>
-        {/* The one flexible column: a long line wraps inside the row's 44pt height instead of clipping. */}
-        <Text variant="readoutXS" tone="muted" maxFontSizeMultiplier={fitted.maxFontSizeMultiplier}>
-          {previous ? setText(previous, units, true) : "–"}
-        </Text>
-      </View>
-      <TextInput
-        accessibilityLabel={t("setWeight", { set })}
-        className={twMerge(columns.weight, input)}
-        style={inputFont}
-        maxFontSizeMultiplier={fitted.maxFontSizeMultiplier}
-        value={weight}
-        placeholder={target.weight || "0"}
-        placeholderTextColorClassName="accent-field-placeholder"
-        selectionColorClassName="accent-tint"
-        onChangeText={setWeight}
-        onEndEditing={commit}
-        keyboardType="decimal-pad"
-        selectTextOnFocus
-      />
-      <TextInput
-        accessibilityLabel={t("setReps", { set })}
-        className={twMerge(columns.reps, input)}
-        style={inputFont}
-        maxFontSizeMultiplier={fitted.maxFontSizeMultiplier}
-        value={reps}
-        placeholder={target.reps || "0"}
-        placeholderTextColorClassName="accent-field-placeholder"
-        selectionColorClassName="accent-tint"
-        onChangeText={setReps}
-        onEndEditing={commit}
-        keyboardType="number-pad"
-        selectTextOnFocus
-      />
-      {row.kind === "warmup" ? (
-        <View className={columns.rir} />
-      ) : (
-        <EffortDot effort={effortOf(row)} label={set} onChange={onEffort} />
-      )}
-      {/* Done is the selection look (the icon): signal fill with a signal-ink check; the check is the cue. */}
-      <SignalCell
-        selected={done}
-        accessibilityRole="checkbox"
-        accessibilityLabel={t("setDone", { set })}
-        onPress={() => onComplete(patch())}
-        className={twMerge(columns.done, "p-0")}
-      >
-        <Icon name="check" size={24} tone="muted" />
-      </SignalCell>
-    </View>
+    </SwipeRow>
   );
 }

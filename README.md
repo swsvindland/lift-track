@@ -6,13 +6,14 @@ Everything stays on the phone: no account, no server, no analytics and no networ
 
 ## What works now
 
-- **Today:** start a workout, resume the one in progress, or repeat a recent workout with every set prefilled from last time. It also shows this week's sets per muscle and body weight.
+- **Today:** start a workout, resume the one in progress, or repeat a recent workout with every set prefilled from last time. It also shows this week's sets per muscle and body weight, which it leaves out while Health sync has brought in a weight from the past week.
 - **Workout logger:**
   - Each set shows last time's weight × reps. A set done as prescribed is one tap on ✓.
   - Typed values override the targets.
   - Reps in reserve (RIR) is optional per set.
   - Set types are warm-up, working, drop and myo-reps.
-  - You can add or delete sets (with Undo), and swap, reorder, superset or remove exercises (with Undo).
+  - Add a set or remove the last one from an exercise's ··· menu, or swipe a set toward the start to delete it (with Undo). Swap, reorder, superset or remove exercises from the same menu (with Undo).
+  - How hard a set felt is one to three bars in red, amber or green (Hard / Good / Easy).
   - The plates per side are shown for the next barbell set.
   - Every set is its own SQLite commit, so a workout survives the app being killed. Only one workout is open at a time.
 - **Rest timer:**
@@ -67,7 +68,7 @@ Everything stays on the phone: no account, no server, no analytics and no networ
   - Sets and loads stay in the app. No energy is estimated, so a watch recording the same session isn't double counted.
   - Only permissions you granted are used.
 
-- **Apple Watch:** start the next session or follow one started on the phone. Log the current set in one tap, with load and reps on the crown. Rate it Hard / Good / Easy during rest, get a tap on the wrist when rest is over, and finish from the wrist; the post-session questions wait on Today until you answer or skip them. See [Apple Watch](docs/watch.md).
+- **Apple Watch:** start the next session or follow one started on the phone. Log the current set in one tap, with load and reps on the crown. The Watch follows the exercise you're on, wherever it is in the list, and comes back to one you skipped (say the rack was taken); the list button picks another exercise. Rate it Hard / Good / Easy during rest, get a tap on the wrist when rest is over, and finish from the wrist; the post-session questions wait on Today until you answer or skip them. See [Apple Watch](docs/watch.md).
 
 A home-screen widget is still to come.
 

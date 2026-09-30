@@ -644,14 +644,36 @@ export const restsAfter = (blocks: Pick<WorkoutExercise, "supersetGroup">[], ind
   blocks[index].supersetGroup === null ||
   blocks[index + 1]?.supersetGroup !== blocks[index].supersetGroup;
 
-/** What the rest after a set leads to: more of this exercise, else the next one. */
-export const restLabel = (block: ExerciseBlock, setId: number, name: string, nextName?: string) =>
-  interpolate(translate(currentLanguage(), "restNext"), {
-    exercise:
-      block.sets.some((s) => s.id !== setId && !s.completedAt && s.kind !== "warmup") || !nextName
-        ? name
-        : nextName,
-  });
+/**
+ * The exercise to do after a set: more of the same one (in a superset, the next one in it), else the first with
+ * sets left, so one skipped because its rack was taken comes back next. Open sets before an exercise's last done
+ * set were skipped (warm-ups nobody checks off) and don't hold it open. The Watch follows the same rule
+ * (`Workout.current` in targets/watch/Model.swift).
+ */
+export function upNext(blocks: ExerciseBlock[], setId: number): ExerciseBlock | undefined {
+  const done = (s: SetRow) => s.id === setId || !!s.completedAt;
+  const left = (block: ExerciseBlock) => {
+    const last = block.sets.findLastIndex(done);
+    return block.sets.some((s, i) => i > last && !done(s));
+  };
+  const index = blocks.findIndex((b) => b.sets.some((s) => s.id === setId));
+  if (index >= 0) {
+    const group = blocks[index].supersetGroup;
+    const members = blocks.flatMap((b, i) =>
+      i === index || (group !== null && b.supersetGroup === group) ? [i] : []
+    );
+    const at = members.indexOf(index);
+    for (let k = 1; k <= members.length; k++) {
+      const block = blocks[members[(at + k) % members.length]];
+      if (left(block)) return block;
+    }
+  }
+  return blocks.find(left);
+}
+
+/** What the rest after a set leads to: the exercise up next, else the one just done. */
+export const restLabel = (exercise: string) =>
+  interpolate(translate(currentLanguage(), "restNext"), { exercise });
 
 /**
  * Checks a set off. Values not typed are taken from its targets, so a set done as

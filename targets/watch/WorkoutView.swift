@@ -4,6 +4,7 @@ struct WorkoutView: View {
   let workout: Workout
   let unit: String
   private var phone = Phone.shared
+  @State private var picking = false
 
   init(workout: Workout, unit: String) {
     self.workout = workout
@@ -11,20 +12,33 @@ struct WorkoutView: View {
   }
 
   var body: some View {
-    if let rest = phone.rest {
-      RestView(rest: rest, rated: rated(rest))
-    } else if let current = workout.current {
-      let exercise = workout.exercises[current.exercise]
-      let next = current.exercise + 1
-      SetView(
-        exercise: exercise,
-        set: exercise.sets[current.set],
-        next: workout.exercises.indices.contains(next) ? workout.exercises[next] : nil,
-        unit: unit
-      )
-      .id(exercise.sets[current.set].id)
-    } else {
-      DoneView()
+    let current = workout.current(chosen: phone.picked)
+    Group {
+      if let rest = phone.rest {
+        RestView(rest: rest, rated: rated(rest))
+      } else if let current {
+        let exercise = workout.exercises[current.exercise]
+        SetView(exercise: exercise, set: exercise.sets[current.set], unit: unit)
+          .id(exercise.sets[current.set].id)
+      } else {
+        DoneView()
+      }
+    }
+    // Outside the set, whose view is replaced when another exercise is picked.
+    .toolbar {
+      if phone.rest == nil, current != nil {
+        ToolbarItem(placement: .topBarTrailing) {
+          Button {
+            picking = true
+          } label: {
+            Image(systemName: "list.bullet")
+          }
+          .accessibilityLabel("Exercises")
+        }
+      }
+    }
+    .sheet(isPresented: $picking) {
+      ExerciseList(workout: workout, current: current?.exercise)
     }
   }
 
@@ -36,11 +50,49 @@ struct WorkoutView: View {
   }
 }
 
+/// Every exercise, to do another one next: the one up next may have its rack taken.
+struct ExerciseList: View {
+  let workout: Workout
+  let current: Int?
+  @Environment(\.dismiss) private var dismiss
+
+  var body: some View {
+    NavigationStack {
+      List(Array(workout.exercises.enumerated()), id: \.element.id) { e, exercise in
+        let done = exercise.sets.filter(\.done).count
+        let open = workout.remaining(e) != nil
+        Button {
+          Phone.shared.choose(exercise.id)
+          dismiss()
+        } label: {
+          HStack {
+            VStack(alignment: .leading, spacing: 2) {
+              Text(exercise.name).lineLimit(2)
+              Text("\(done) of \(exercise.sets.count) sets")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .monospacedDigit()
+            }
+            Spacer(minLength: 4)
+            if e == current {
+              Image(systemName: "play.fill").foregroundStyle(VectorColor.signal)
+            } else if !open {
+              Image(systemName: VectorSymbol.done).foregroundStyle(.secondary)
+            }
+          }
+        }
+        .disabled(!open)
+        .accessibilityAddTraits(e == current ? .isSelected : [])
+      }
+      .navigationTitle("Exercises")
+    }
+  }
+}
+
 /// The set to do now: its load and reps, prefilled, and one tap to log it.
 struct SetView: View {
   let exercise: WatchExercise
   let set: WatchSet
-  let next: WatchExercise?
   let unit: String
 
   private enum Field { case weight, reps }
@@ -49,10 +101,9 @@ struct SetView: View {
   @State private var reps: Double
   private var session = Session.shared
 
-  init(exercise: WatchExercise, set: WatchSet, next: WatchExercise?, unit: String) {
+  init(exercise: WatchExercise, set: WatchSet, unit: String) {
     self.exercise = exercise
     self.set = set
-    self.next = next
     self.unit = unit
     let target = set.weightKg ?? 0
     let nearest = exercise.loads.indices.min {
@@ -125,7 +176,7 @@ struct SetView: View {
 
         Button {
           Phone.shared.log(
-            exercise: exercise, set: set, weightKg: weightKg, reps: Int(reps.rounded()), next: next)
+            exercise: exercise, set: set, weightKg: weightKg, reps: Int(reps.rounded()))
         } label: {
           Label("Log", systemImage: "checkmark")
             .font(.headline)
@@ -224,7 +275,8 @@ struct EffortButton: View {
   var body: some View {
     Button(action: action) {
       VStack(spacing: 3) {
-        EffortMark(level: effort.level)
+        // Selected, the bars take the signal ink like the word beside them.
+        EffortMark(level: effort.level, color: selected ? VectorColor.signalInk : effort.color)
         Text(label).font(.caption2).lineLimit(1).minimumScaleFactor(0.8)
       }
       // Selected is the icon look: signal fill, #071017 content. A capsule, the Watch's control shape.
@@ -272,17 +324,18 @@ struct DoneView: View {
   }
 }
 
-/// Effort as 1–3 ascending bars: the count carries the meaning, not a hue. Filled bars take the
-/// current foreground; empty ones are outlined.
+/// Effort as 1–3 ascending bars in its colour; the count reads without the colour. Empty bars are
+/// outlined.
 struct EffortMark: View {
   let level: Int
+  let color: Color
 
   var body: some View {
     HStack(alignment: .bottom, spacing: 2) {
       ForEach(1...3, id: \.self) { i in
         let filled = i <= level
         RoundedRectangle(cornerRadius: 1)
-          .fill(filled ? AnyShapeStyle(.foreground) : AnyShapeStyle(Color.clear))
+          .fill(filled ? color : Color.clear)
           .overlay(
             RoundedRectangle(cornerRadius: 1)
               .strokeBorder(filled ? Color.clear : Color.primary.opacity(0.4), lineWidth: 1)

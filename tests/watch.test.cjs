@@ -59,7 +59,8 @@ test("the Watch logs and rates sets the way the phone does, and ignores repeats"
   );
   watch.applyWatchCommand({ id: "2", type: "rate", setId: s1.id, effort: "hard" }, context);
   state = watch.watchState(context, null, []);
-  assert.deepEqual(state.workout.exercises[0].sets[0], {
+  const { doneAt, ...logged } = state.workout.exercises[0].sets[0];
+  assert.deepEqual(logged, {
     id: s1.id,
     kind: "working",
     weightKg: 100,
@@ -67,6 +68,12 @@ test("the Watch logs and rates sets the way the phone does, and ignores repeats"
     done: true,
     effort: "hard",
   });
+  assert.ok(
+    Math.abs(doneAt - Date.now()) < 60000,
+    "when it was checked off, for the Watch to follow"
+  );
+  assert.equal(state.workout.exercises[0].sets[1].doneAt, null);
+  assert.equal(state.workout.exercises[0].superset, null);
   // The next set starts from what was just done, as on the phone.
   assert.equal(state.workout.exercises[0].sets[1].weightKg, 100);
   assert.equal(state.workout.exercises[0].sets[1].id, s2.id);
@@ -99,6 +106,7 @@ test("supersets rest after their last exercise only", () => {
   const [a, b] = watch.watchState(context, null, []).workout.exercises;
   assert.equal(a.rest, 0);
   assert.equal(b.rest, 90);
+  assert.ok(a.superset !== null && a.superset === b.superset, "the Watch alternates them");
   assert.deepEqual(
     watch.applyWatchCommand(
       { id: "1", type: "log", setId: a.sets[0].id, weightKg: 60, reps: 10 },
@@ -106,13 +114,57 @@ test("supersets rest after their last exercise only", () => {
     ),
     {}
   );
-  assert.equal(
+  const rest = watch.applyWatchCommand(
+    { id: "2", type: "log", setId: b.sets[0].id, weightKg: 10, reps: 12 },
+    context
+  ).rest;
+  assert.equal(rest.seconds, 90);
+  assert.equal(rest.label, `Next: ${a.name}`, "back to the first exercise of the superset");
+});
+
+test("a skipped exercise comes back once the one done instead is finished", () => {
+  const { watch, workouts, byId, context } = setup();
+  const id = workouts.startWorkout();
+  workouts.addExercise(id, byId("barbell-back-squat"));
+  workouts.addExercise(id, byId("barbell-rdl"));
+  workouts.addExercise(id, byId("leg-extension"));
+  const [squat, rdl, extension] = watch.watchState(context, null, []).workout.exercises;
+  // The rack is taken: the deadlifts go first.
+  const log = (set, n) =>
     watch.applyWatchCommand(
-      { id: "2", type: "log", setId: b.sets[0].id, weightKg: 10, reps: 12 },
+      { id: `log-${set.id}`, type: "log", setId: set.id, weightKg: 60, reps: 8 },
       context
-    ).rest.seconds,
-    90
-  );
+    ).rest?.label ?? `(no rest after ${n})`;
+  assert.equal(log(rdl.sets[0], 1), `Next: ${rdl.name}`);
+  assert.equal(log(rdl.sets[1], 2), `Next: ${rdl.name}`);
+  assert.equal(log(rdl.sets[2], 3), `Next: ${squat.name}`);
+  for (const set of squat.sets.slice(0, -1)) log(set);
+  assert.equal(log(squat.sets.at(-1)), `Next: ${extension.name}`);
+});
+
+test("sets skipped before the last one done don't hold an exercise open", () => {
+  const { workouts, byId } = setup();
+  const id = workouts.startWorkout();
+  const bench = workouts.addExercise(id, byId("barbell-bench-press"));
+  workouts.addExercise(id, byId("db-curl"));
+  workouts.addSet(bench, "warmup");
+  const [press, curl] = workouts.workoutDetail(id).exercises;
+  const complete = (set) => {
+    workouts.updateSet(set.id, { weightKg: 20, reps: 10 });
+    assert.ok(workouts.completeSet(set.id));
+  };
+  // Warm-up left unchecked, working sets done.
+  const [warmup, s1, s2, s3] = press.sets;
+  assert.equal(warmup.kind, "warmup");
+  complete(s1);
+  complete(s2);
+  let blocks = workouts.workoutDetail(id).exercises;
+  assert.equal(workouts.upNext(blocks, s2.id)?.id, press.id);
+  assert.equal(workouts.upNext(blocks, s3.id)?.id, curl.id, "not back to the warm-up");
+  for (const set of curl.sets) complete(set);
+  complete(s3);
+  blocks = workouts.workoutDetail(id).exercises;
+  assert.equal(workouts.upNext(blocks, s3.id), undefined, "all done");
 });
 
 test("Start on the Watch repeats the last workout or begins the program's next session", () => {
@@ -232,6 +284,12 @@ test("commands from the Watch are validated", () => {
   assert.equal(
     watch.parseWatchCommand('{"id":"1","type":"rate","setId":1,"effort":"meh"}'),
     undefined
+  );
+  // The Watch stamps when a log was tapped, for itself; the phone keeps its own time.
+  assert.equal(
+    watch.parseWatchCommand('{"id":"1","type":"log","setId":1,"weightKg":60,"reps":8,"at":1}')
+      ?.reps,
+    8
   );
   assert.deepEqual(watch.parseWatchCommand('{"id":"1","type":"rate","setId":1,"effort":null}'), {
     id: "1",

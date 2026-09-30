@@ -22,6 +22,7 @@ import {
   replaceExercise,
   restsAfter,
   tidyWorkout,
+  upNext,
   workoutDetail,
 } from "@/lib/workouts";
 import {
@@ -283,11 +284,10 @@ export function WorkoutScreen({ workoutId }: { workoutId?: number }) {
               }
               standsInFor={planned && planned !== block.exerciseId ? byId(planned).name : undefined}
               missingAt={!editingPast && gym && !canDoAt(exercise, gym) ? gym.name : undefined}
-              nextName={
-                detail.exercises[index + 1]
-                  ? byId(detail.exercises[index + 1].exerciseId).name
-                  : undefined
-              }
+              nextAfter={(setId) => {
+                const next = upNext(detail.exercises, setId);
+                return next && byId(next.exerciseId).name;
+              }}
               onUndo={(message, onUndo) => undo.show({ message, onUndo })}
             />
           );

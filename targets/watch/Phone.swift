@@ -16,6 +16,8 @@ final class Phone: NSObject, WCSessionDelegate {
   private var localRest: (rest: Rest, at: Double)?
   /// A rest skipped here, hidden until the phone's state catches up.
   private var skipped: Double?
+  /// An exercise picked here, and how many sets were done then: it leads until another is logged.
+  private var chosen: (exercise: Int, done: Int)?
   /// Moves on when a rest runs out, so views drop it.
   private(set) var clock = Date()
   @ObservationIgnored private var restTimer: Timer?
@@ -49,6 +51,7 @@ final class Phone: NSObject, WCSessionDelegate {
         set.weightKg = command.weightKg
         set.reps = command.reps
         set.done = true
+        set.doneAt = command.at
         workout.exercises[e].sets[s] = set
         // As on the phone: the next open set starts from what was just done.
         if let n = workout.exercises[e].sets.firstIndex(where: { !$0.done && $0.kind == set.kind }),
@@ -64,6 +67,12 @@ final class Phone: NSObject, WCSessionDelegate {
       }
     }
     return workout
+  }
+
+  /// The exercise picked here, while no set has been logged or unchecked since.
+  var picked: Int? {
+    guard let chosen, let workout, chosen.done == workout.doneCount else { return nil }
+    return chosen.exercise
   }
 
   var starting: Bool {
@@ -88,16 +97,24 @@ final class Phone: NSObject, WCSessionDelegate {
     send(Command(type: .start))
   }
 
-  func log(exercise: WatchExercise, set: WatchSet, weightKg: Double, reps: Int, next: WatchExercise?) {
-    send(Command(type: .log, setId: set.id, weightKg: weightKg, reps: reps))
+  /// Does this exercise next, e.g. when the one up next has its rack taken.
+  func choose(_ exercise: Int) {
+    chosen = (exercise, workout?.doneCount ?? 0)
+  }
+
+  func log(exercise: WatchExercise, set: WatchSet, weightKg: Double, reps: Int) {
+    let now = Date().timeIntervalSince1970 * 1000
+    send(Command(type: .log, setId: set.id, weightKg: weightKg, reps: reps, at: now))
     WKInterfaceDevice.current().play(.success)
     guard set.kind != .warmup, exercise.rest > 0 else { return }
-    let more = exercise.sets.contains { $0.id != set.id && !$0.done && $0.kind != .warmup }
-    let now = Date().timeIntervalSince1970 * 1000
+    // What comes next now that this set is in, as the phone's own rest will name it.
+    let next = workout.flatMap { workout in
+      workout.current().map { workout.exercises[$0.exercise].name }
+    }
     localRest = (
       Rest(
         endsAt: now + Double(exercise.rest) * 1000, total: Double(exercise.rest),
-        label: "Next: \(more || next == nil ? exercise.name : next!.name)", setId: set.id),
+        label: "Next: \(next ?? exercise.name)", setId: set.id),
       now
     )
     scheduleRestEnd()

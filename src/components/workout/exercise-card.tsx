@@ -23,7 +23,6 @@ import {
 } from "@/lib/workouts";
 import {
   ActionMenu,
-  Button,
   Heading,
   Icon,
   Label,
@@ -53,7 +52,7 @@ export function ExerciseCard({
   ai,
   standsInFor,
   missingAt,
-  nextName,
+  nextAfter,
 }: {
   block: ExerciseBlock;
   exercise: Exercise;
@@ -76,8 +75,8 @@ export function ExerciseCard({
   standsInFor?: string;
   /** The gym's name when it can't do this exercise and nothing stood in for it. */
   missingAt?: string;
-  /** The exercise after this one, named in the rest timer once this one is done. */
-  nextName?: string;
+  /** The exercise up next after a set, named in the rest timer. */
+  nextAfter: (setId: number) => string | undefined;
 }) {
   const { t } = useStore();
   const format = useKitFormat();
@@ -96,6 +95,12 @@ export function ExerciseCard({
   const nextLoad = nextOpen ? (nextOpen.weightKg ?? nextOpen.targetWeightKg) : null;
   const plates = gym && nextLoad ? platesPerSide(nextLoad, exercise.equipment, gym) : null;
 
+  const deleteRow = (row: SetRow | undefined) => {
+    if (!row) return;
+    const undo = write(() => deleteSet(row.id));
+    onUndo(t("setDeleted"), () => write(undo));
+  };
+
   const complete = (row: SetRow, patch: Parameters<typeof updateSet>[1]) => {
     if (row.completedAt) {
       write(() => completeSet(row.id, false));
@@ -113,7 +118,7 @@ export function ExerciseCard({
     if (restAfter && row.kind !== "warmup")
       startRest(
         restSeconds ?? defaultRest(exercise),
-        restLabel(block, row.id, exercise.name, nextName),
+        restLabel(nextAfter(row.id) ?? exercise.name),
         row.id
       );
   };
@@ -158,6 +163,29 @@ export function ExerciseCard({
             {
               actions: [
                 {
+                  key: "add",
+                  label: t("addSet"),
+                  icon: "add",
+                  onPress: () => write(() => addSet(block.id)),
+                },
+                {
+                  key: "warmup",
+                  label: t("addWarmupSet"),
+                  icon: "warmUp",
+                  onPress: () => write(() => addSet(block.id, "warmup")),
+                },
+                {
+                  key: "removeSet",
+                  label: t("removeLastSet"),
+                  icon: "remove",
+                  disabled: !block.sets.length,
+                  onPress: () => deleteRow(block.sets.at(-1)),
+                },
+              ],
+            },
+            {
+              actions: [
+                {
                   key: "swap",
                   label: t("swapExercise"),
                   icon: "swap",
@@ -169,12 +197,6 @@ export function ExerciseCard({
                   icon: "link",
                   disabled: isLast && block.supersetGroup === null,
                   onPress: () => write(() => toggleSuperset(block.id)),
-                },
-                {
-                  key: "warmup",
-                  label: t("addWarmupSet"),
-                  icon: "warmUp",
-                  onPress: () => write(() => addSet(block.id, "warmup")),
                 },
                 {
                   key: "up",
@@ -245,10 +267,7 @@ export function ExerciseCard({
           onComplete={(patch) => complete(row, patch)}
           onKind={(kind) => write(() => updateSet(row.id, { kind }))}
           onEffort={(effort) => write(() => rateSet(row.id, effort))}
-          onDelete={() => {
-            const undo = write(() => deleteSet(row.id));
-            onUndo(t("setDeleted"), () => write(undo));
-          }}
+          onDelete={() => deleteRow(row)}
         />
       ))}
 
@@ -260,10 +279,6 @@ export function ExerciseCard({
           />
         </View>
       )}
-
-      <Button variant="ghost" icon="add" onPress={() => write(() => addSet(block.id))}>
-        {t("addSet")}
-      </Button>
     </Panel>
   );
 }

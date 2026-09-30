@@ -24,6 +24,7 @@ import {
   startWorkout,
   trainingGym,
   updateSet,
+  upNext,
   workoutDetail,
 } from "./workouts";
 
@@ -38,6 +39,8 @@ export type WatchSet = {
   weightKg: number | null;
   reps: number | null;
   done: boolean;
+  /** When it was checked off, in ms since 1970: the Watch follows the latest one. */
+  doneAt: number | null;
   effort: Effort | null;
 };
 
@@ -46,6 +49,8 @@ export type WatchExercise = {
   name: string;
   repMin: number;
   repMax: number;
+  /** Its superset, shared with the exercises it alternates with; null when it stands alone. */
+  superset: number | null;
   /** Seconds of rest after a working set; 0 inside a superset until its last exercise. */
   rest: number;
   /** Loads the crown steps through, in kg, ascending: what the gym can make near the target. */
@@ -156,6 +161,7 @@ export function watchState(ctx: WatchContext, rest: Rest | null, acked: string[]
           weightKg: s.weightKg ?? s.targetWeightKg,
           reps: s.reps ?? s.targetReps,
           done: !!s.completedAt,
+          doneAt: s.completedAt ? Date.parse(s.completedAt) : null,
           effort: s.effort,
         }));
         const current = sets.find((s) => !s.done && s.weightKg !== null) ?? sets.at(-1);
@@ -164,6 +170,7 @@ export function watchState(ctx: WatchContext, rest: Rest | null, acked: string[]
           name: exercise.name,
           repMin: block.repMin,
           repMax: block.repMax,
+          superset: block.supersetGroup,
           rest: restsAfter(detail.exercises, index) ? ctx.restFor(exercise) : 0,
           loads: crownLoads(exercise, gym, ctx.units, current?.weightKg ?? 0),
           sets,
@@ -250,16 +257,11 @@ export function applyWatchCommand(cmd: WatchCommand, ctx: WatchContext): WatchEf
   if (!completeSet(row.id) || row.kind === "warmup" || !restsAfter(detail.exercises, index))
     return {};
   const exercise = ctx.byId(block.exerciseId);
-  const next = detail.exercises[index + 1];
+  const next = upNext(detail.exercises, row.id);
   return {
     rest: {
       seconds: ctx.restFor(exercise),
-      label: restLabel(
-        block,
-        row.id,
-        exercise.name,
-        next ? ctx.byId(next.exerciseId).name : undefined
-      ),
+      label: restLabel(next ? ctx.byId(next.exerciseId).name : exercise.name),
       setId: row.id,
     },
   };
