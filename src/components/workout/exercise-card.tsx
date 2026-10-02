@@ -1,4 +1,4 @@
-import { Alert, Pressable, View } from "react-native";
+import { Alert, View } from "react-native";
 import { router } from "expo-router";
 import { twMerge } from "tailwind-merge";
 import type { Gym } from "@/db";
@@ -126,25 +126,19 @@ export function ExerciseCard({
   return (
     <Panel tone={block.supersetGroup !== null ? "live" : "default"} className="gap-2">
       <View className="flex-row items-start gap-2">
+        {/* Not a link: a stray tap while typing a set shouldn't leave the workout. Details are in the ··· menu. */}
         <View className="flex-1 gap-0.5">
-          <Pressable
-            className="gap-0.5"
-            accessibilityRole="link"
-            onPress={() => router.push({ pathname: "/exercise/[id]", params: { id: exercise.id } })}
-          >
-            {block.supersetGroup !== null && <Label>{t("superset")}</Label>}
-            <Heading level={3}>{exercise.name}</Heading>
-            <Meta
-              items={[
-                format.list(primaryMuscles(exercise).map((m) => muscleLabels[m])),
-                t("repRange", { range: format.range(block.repMin, block.repMax) }),
-              ]}
-            />
-            {!!missingAt && <Note tone="warning">{t("notAtGym", { gym: missingAt })}</Note>}
-            {!!standsInFor && <Note>{t("inPlaceOf", { name: standsInFor })}</Note>}
-            {!!advice && <Note tone="tint">{advice}</Note>}
-          </Pressable>
-          {/* Outside the link, so screen readers reach Undo on its own. */}
+          {block.supersetGroup !== null && <Label>{t("superset")}</Label>}
+          <Heading level={3}>{exercise.name}</Heading>
+          <Meta
+            items={[
+              format.list(primaryMuscles(exercise).map((m) => muscleLabels[m])),
+              t("repRange", { range: format.range(block.repMin, block.repMax) }),
+            ]}
+          />
+          {!!missingAt && <Note tone="warning">{t("notAtGym", { gym: missingAt })}</Note>}
+          {!!standsInFor && <Note>{t("inPlaceOf", { name: standsInFor })}</Note>}
+          {!!advice && <Note tone="tint">{advice}</Note>}
           {ai && (
             <View className="flex-row items-center gap-1.5">
               <Icon name="analysis" size={16} tone="tint" />
@@ -185,6 +179,13 @@ export function ExerciseCard({
             },
             {
               actions: [
+                {
+                  key: "details",
+                  label: t("exerciseDetails"),
+                  icon: "info",
+                  onPress: () =>
+                    router.push({ pathname: "/exercise/[id]", params: { id: exercise.id } }),
+                },
                 {
                   key: "swap",
                   label: t("swapExercise"),

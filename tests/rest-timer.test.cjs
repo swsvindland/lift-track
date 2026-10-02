@@ -171,3 +171,20 @@ test("the rest timer speaks the app's language, not the phone's", async () => {
   ios.timer.stopRest();
   android.timer.stopRest();
 });
+
+test("rest defaults: squats and deadlifts 3:00, other compounds 2:00, isolation 1:00", () => {
+  const { timer } = setup();
+  const { library } = load("src/lib/exercises/library.ts");
+  const rest = (id) => timer.defaultRest(library.find((e) => e.id === id));
+  for (const id of [
+    "barbell-back-squat",
+    "hack-squat",
+    "conventional-deadlift",
+    "trap-bar-deadlift",
+  ])
+    assert.equal(rest(id), 180, id);
+  for (const id of ["barbell-bench-press", "goblet-squat", "db-rdl", "leg-press", "chest-dip"])
+    assert.equal(rest(id), 120, id);
+  for (const id of ["db-lateral-raise", "barbell-curl", "leg-extension", "cable-fly"])
+    assert.equal(rest(id), 60, id);
+});

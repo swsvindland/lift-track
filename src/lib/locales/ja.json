@@ -99,6 +99,7 @@
   "addExercise": "種目を追加",
   "typeOrSay": "入力・音声入力",
   "swapExercise": "種目を変更",
+  "exerciseDetails": "種目の詳細",
   "renameWorkout": "ワークアウト名を変更",
   "name": "名前",
   "workoutNamePlaceholder": "プッシュ、上半身A、脚…",
