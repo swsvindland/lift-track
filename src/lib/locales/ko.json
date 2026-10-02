@@ -155,8 +155,6 @@
   "effortOption": "{label} · {hint}",
   "rest": "휴식",
   "restOver": "휴식 종료",
-  "restLess": "15초 줄이기",
-  "restMore": "15초 늘리기",
   "restTimer": "휴식 타이머",
   "restUntil": "{time}까지 휴식",
   "restNext": "다음: {exercise}",

@@ -234,15 +234,6 @@ export function startRest(seconds: number, label: string, setId?: number) {
   show(rest);
 }
 
-export function adjustRest(seconds: number) {
-  if (!current) return;
-  const endsAt = current.endsAt + seconds * 1000;
-  if (endsAt <= Date.now()) return stopRest();
-  const rest = { ...current, endsAt, total: Math.max(1, current.total + seconds) };
-  write(rest);
-  show(rest);
-}
-
 export function stopRest() {
   write(null);
   watchDeadline(null);

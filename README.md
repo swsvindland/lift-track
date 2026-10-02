@@ -17,7 +17,7 @@ Everything stays on the phone: no account, no server, no analytics and no networ
   - The plates per side are shown for the next barbell set.
   - Every set is its own SQLite commit, so a workout survives the app being killed. Only one workout is open at a time.
 - **Rest timer:**
-  - Starts on each checked set, with its length set by the exercise (squats and deadlifts 3:00, other compounds 2:00, isolation 1:00; each exercise can set its own), adjustable ±15 s or skipped. Inside a superset, rest waits until the last exercise.
+  - Starts on each checked set, with its length set by the exercise (squats and deadlifts 3:00, other compounds 2:00, isolation 1:00; each exercise can set its own). It's a suggestion: Skip starts the next set early, or just wait longer. Inside a superset, rest waits until the last exercise.
   - It's stored as a deadline, so it survives app restarts.
   - On iPhone a Live Activity shows the countdown on the Lock Screen and in the Dynamic Island, and tapping it opens the workout. On Android an ongoing notification shows when rest ends.
   - A local notification fires at the end, and a haptic fires in the app.

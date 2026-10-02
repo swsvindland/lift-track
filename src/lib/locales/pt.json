@@ -155,8 +155,6 @@
   "effortOption": "{label} · {hint}",
   "rest": "Descanso",
   "restOver": "Descanso terminado",
-  "restLess": "Menos 15 segundos",
-  "restMore": "Mais 15 segundos",
   "restTimer": "Temporizador de descanso",
   "restUntil": "Descanso até {time}",
   "restNext": "Próximo: {exercise}",

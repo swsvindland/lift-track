@@ -155,8 +155,6 @@
   "effortOption": "{label} · {hint}",
   "rest": "休憩",
   "restOver": "休憩終了",
-  "restLess": "15秒短く",
-  "restMore": "15秒長く",
   "restTimer": "休憩タイマー",
   "restUntil": "{time}まで休憩",
   "restNext": "次：{exercise}",

@@ -155,8 +155,6 @@
   "effortOption": "{label} · {hint}",
   "rest": "Rust",
   "restOver": "Rust voorbij",
-  "restLess": "15 seconden minder",
-  "restMore": "15 seconden meer",
   "restTimer": "Rusttimer",
   "restUntil": "Rust tot {time}",
   "restNext": "Volgende: {exercise}",

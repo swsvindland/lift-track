@@ -155,8 +155,6 @@
   "effortOption": "{label} · {hint}",
   "rest": "Vila",
   "restOver": "Vilan är slut",
-  "restLess": "15 sekunder mindre",
-  "restMore": "15 sekunder mer",
   "restTimer": "Vilotimer",
   "restUntil": "Vila till {time}",
   "restNext": "Nästa: {exercise}",

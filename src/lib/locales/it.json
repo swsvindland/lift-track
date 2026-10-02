@@ -155,8 +155,6 @@
   "effortOption": "{label} · {hint}",
   "rest": "Recupero",
   "restOver": "Recupero finito",
-  "restLess": "15 secondi in meno",
-  "restMore": "15 secondi in più",
   "restTimer": "Timer di recupero",
   "restUntil": "Recupero fino alle {time}",
   "restNext": "Prossimo: {exercise}",

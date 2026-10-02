@@ -155,8 +155,6 @@
   "effortOption": "{label} · {hint}",
   "rest": "休息",
   "restOver": "休息结束",
-  "restLess": "减少 15 秒",
-  "restMore": "增加 15 秒",
   "restTimer": "休息计时器",
   "restUntil": "休息至 {time}",
   "restNext": "下一个：{exercise}",
