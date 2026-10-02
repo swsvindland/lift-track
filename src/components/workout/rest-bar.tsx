@@ -1,10 +1,10 @@
 import { useEffect, useRef } from "react";
 import { AccessibilityInfo, View } from "react-native";
 import { useQuery, write } from "@/lib/data";
-import { adjustRest, formatClock, stopRest, useRest } from "@/lib/rest-timer";
+import { formatClock, stopRest, useRest } from "@/lib/rest-timer";
 import { useStore } from "@/lib/store";
 import { rateSet, setById } from "@/lib/workouts";
-import { IconButton, Label, LinkButton, ScreenFooter, Text, Value, useHaptics } from "@/vector";
+import { Button, Label, ScreenFooter, Text, Value, useHaptics } from "@/vector";
 import { EffortPicker } from "./effort";
 
 /** The running rest, docked at the bottom of the workout as the live strip, with the set just done to rate. */
@@ -37,13 +37,10 @@ export function RestBar() {
             </Text>
           )}
         </View>
-        <IconButton
-          icon="remove"
-          accessibilityLabel={t("restLess")}
-          onPress={() => adjustRest(-15)}
-        />
-        <IconButton icon="add" accessibilityLabel={t("restMore")} onPress={() => adjustRest(15)} />
-        <LinkButton onPress={stopRest}>{t("skip")}</LinkButton>
+        {/* The length is a suggestion: go early with Skip, or simply wait longer. An outline, so it reads as a button. */}
+        <Button variant="secondary" onPress={stopRest}>
+          {t("skip")}
+        </Button>
       </ScreenFooter>
       {set?.completedAt && (
         <ScreenFooter>

@@ -234,15 +234,6 @@ export function startRest(seconds: number, label: string, setId?: number) {
   show(rest);
 }
 
-export function adjustRest(seconds: number) {
-  if (!current) return;
-  const endsAt = current.endsAt + seconds * 1000;
-  if (endsAt <= Date.now()) return stopRest();
-  const rest = { ...current, endsAt, total: Math.max(1, current.total + seconds) };
-  write(rest);
-  show(rest);
-}
-
 export function stopRest() {
   write(null);
   watchDeadline(null);
@@ -271,17 +262,32 @@ export function useRest() {
   return { rest, left };
 }
 
-/** Default rest by how demanding the exercise is. */
+/** Patterns that move more than one joint; every other pattern is an isolation exercise. */
+const compound = [
+  "horizontalPress",
+  "inclinePress",
+  "verticalPress",
+  "dip",
+  "horizontalRow",
+  "verticalPull",
+  "squat",
+  "lunge",
+  "legPress",
+  "hinge",
+  "hipThrust",
+];
+
+/**
+ * Default rest by how demanding the exercise is: squats and deadlifts under a bar or plates 3:00, other compounds
+ * 2:00, isolation 1:00. A goblet squat or a dumbbell RDL counts as an ordinary compound.
+ */
 export function defaultRest(exercise: { pattern: string; equipment: string }) {
-  const heavy = ["squat", "hinge", "horizontalPress", "inclinePress", "verticalPress", "legPress"];
-  if (heavy.includes(exercise.pattern) && exercise.equipment !== "machine") return 180;
   if (
-    ["lateralRaise", "curl", "tricepsExtension", "calfRaise", "crunch", "wrist"].includes(
-      exercise.pattern
-    )
+    ["squat", "hinge"].includes(exercise.pattern) &&
+    ["barbell", "trapBar", "smith", "plateLoaded", "machine"].includes(exercise.equipment)
   )
-    return 90;
-  return 120;
+    return 180;
+  return compound.includes(exercise.pattern) ? 120 : 60;
 }
 
 export const formatClock = (seconds: number) =>

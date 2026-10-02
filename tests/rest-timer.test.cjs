@@ -75,7 +75,8 @@ test("the rest Live Activity takes no colours from JS and restarts once it was s
   assert.equal(start.args[0].subtitle, "Next: Bench press");
   assert.equal(storedActivity(), "activity-1");
 
-  timer.adjustRest(15);
+  // The next set's rest updates the same activity.
+  timer.startRest(90, "Next: Bench press", 8);
   await settle();
   assert.deepEqual(
     la.calls.map((c) => c.name),
@@ -85,7 +86,7 @@ test("the rest Live Activity takes no colours from JS and restarts once it was s
 
   // Swiped away on the Lock Screen: the update throws, so a new activity starts for this rest.
   la.dismissed.add("activity-1");
-  timer.adjustRest(15);
+  timer.startRest(90, "Next: Bench press", 9);
   await settle();
   assert.deepEqual(
     la.calls.map((c) => c.name),
@@ -110,18 +111,6 @@ test("the Live Activity gets the rest's end and its length, so its meter starts 
   assert.deepEqual(Object.keys(first).sort(), ["date", "progress"]);
   assert.equal(first.progress, 90, "the length in seconds");
   assert.ok(first.date >= before + 90_000 && first.date <= Date.now() + 90_000);
-  const startedAt = first.date - first.progress * 1000;
-
-  // More or less rest moves the end and the length together: the meter's start (end − length) stays put, so
-  // the Lock Screen bar never refills.
-  timer.adjustRest(15);
-  timer.adjustRest(-30);
-  await settle();
-  for (const call of la.calls.slice(1)) {
-    const bar = call.args[1].progressBar;
-    assert.equal(bar.date - bar.progress * 1000, startedAt);
-  }
-  assert.equal(la.calls.at(-1).args[1].progressBar.progress, 75);
   assert.deepEqual(timer.restProgressBar({ endsAt: 5000, total: 3 }), { date: 5000, progress: 3 });
   timer.stopRest();
 });
@@ -136,9 +125,9 @@ test("a rest that runs out while the app is open ends its Live Activity at the d
   assert.deepEqual(la.calls.at(-1), { name: "stop", args: ["activity-1", { title: "Rest over" }] });
   assert.equal(storedActivity(), "");
 
-  // More rest moves the deadline; stopping clears it, so nothing ends later.
+  // The next rest moves the deadline; stopping clears it, so nothing ends later.
   timer.startRest(0.05, "Next: Squat");
-  timer.adjustRest(15);
+  timer.startRest(15, "Next: Squat");
   await new Promise((resolve) => setTimeout(resolve, 120));
   assert.equal(la.calls.at(-1).name, "update");
   assert.equal(storedActivity(), "activity-2");
@@ -170,4 +159,21 @@ test("the rest timer speaks the app's language, not the phone's", async () => {
   assert.equal(end.content.title, "Pause vorbei");
   ios.timer.stopRest();
   android.timer.stopRest();
+});
+
+test("rest defaults: squats and deadlifts 3:00, other compounds 2:00, isolation 1:00", () => {
+  const { timer } = setup();
+  const { library } = load("src/lib/exercises/library.ts");
+  const rest = (id) => timer.defaultRest(library.find((e) => e.id === id));
+  for (const id of [
+    "barbell-back-squat",
+    "hack-squat",
+    "conventional-deadlift",
+    "trap-bar-deadlift",
+  ])
+    assert.equal(rest(id), 180, id);
+  for (const id of ["barbell-bench-press", "goblet-squat", "db-rdl", "leg-press", "chest-dip"])
+    assert.equal(rest(id), 120, id);
+  for (const id of ["db-lateral-raise", "barbell-curl", "leg-extension", "cable-fly"])
+    assert.equal(rest(id), 60, id);
 });
