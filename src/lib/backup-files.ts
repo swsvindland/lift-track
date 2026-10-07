@@ -29,7 +29,7 @@ export async function shareBackupFile(uri: string) {
   await Sharing.shareAsync(uri, {
     mimeType: "application/json",
     UTI: "public.json",
-    dialogTitle: "Save encrypted Vector Lift backup",
+    dialogTitle: "Save encrypted Pendum Lift backup",
   });
 }
 

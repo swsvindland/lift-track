@@ -8,6 +8,23 @@ export async function getHealthAdapter(): Promise<HealthAdapter> {
   if (!hk.isHealthDataAvailable()) throw new Error("healthUnavailable");
   const shared = (type: typeof bodyMass | typeof workout) =>
     hk.authorizationStatusFor(type) === hk.AuthorizationStatus.sharingAuthorized;
+  // Samples were written with their client id as HKSyncIdentifier, so one can be found by it.
+  const saved = (id: string, clientId?: string) =>
+    id
+      ? { uuid: id }
+      : {
+          metadata: {
+            withMetadataKey: "HKSyncIdentifier",
+            operatorType: hk.ComparisonPredicateOperator.equalTo,
+            value: clientId,
+          },
+        };
+  // HealthKit fails a delete that matched nothing (the person removed the sample in Health, or it
+  // was saved on a phone whose Health this one doesn't share); the sample is gone either way.
+  const gone = (error: unknown) => {
+    const { code, message } = (error ?? {}) as { code?: unknown; message?: unknown };
+    if (!/no data|errorNoData|code[ =]?11\b/i.test(`${code ?? ""} ${message ?? ""}`)) throw error;
+  };
   return {
     async authorize(interactive = true) {
       if (interactive)
@@ -58,8 +75,9 @@ export async function getHealthAdapter(): Promise<HealthAdapter> {
       if (!result) throw new Error("syncFailed");
       return result.uuid;
     },
-    async remove(_kind, id) {
-      await hk.deleteObjects(bodyMass, { uuid: id });
+    async remove(_kind, id, clientId) {
+      if (!id && !clientId) return;
+      await hk.deleteObjects(bodyMass, saved(id, clientId)).catch(gone);
     },
     async writeWorkout(w) {
       // Duration only: no energy estimate, so a watch that also recorded the session isn't
@@ -75,8 +93,9 @@ export async function getHealthAdapter(): Promise<HealthAdapter> {
       if (!result) throw new Error("syncFailed");
       return result.uuid;
     },
-    async removeWorkout(id) {
-      await hk.deleteObjects(workout, { uuid: id });
+    async removeWorkout(id, clientId) {
+      if (!id && !clientId) return;
+      await hk.deleteObjects(workout, saved(id, clientId)).catch(gone);
     },
   };
 }

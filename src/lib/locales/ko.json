@@ -468,7 +468,7 @@
   "training": "트레이닝",
   "travelingAtGym": "여행 중 · {gym}",
   "unitsWithSymbol": "{name} · {unit}",
-  "localOnlyNote": "Vector Lift는 모든 데이터를 이 휴대폰에 보관합니다. 계정도 서버도 없습니다.",
+  "localOnlyNote": "Pendum Lift는 모든 데이터를 이 휴대폰에 보관합니다. 계정도 서버도 없습니다.",
   "backupFailed": "백업을 완료하지 못했습니다.",
   "backupAndRestore": "백업 및 복원",
   "backupIntro": "원하는 곳에 저장하는 암호화 파일입니다. 클라우드 사본과 비밀번호 복구는 없습니다.",

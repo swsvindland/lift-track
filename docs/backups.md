@@ -1,69 +1,64 @@
 # Backups, export and erasing
 
-Vector Lift has no server and no account, so a backup is a file you keep. Everything here lives in **Settings**.
+Pendum Lift has no server and no account, so a backup is a file you keep. Export, restore and the recovery copy come from
+the shared Vector Vault; [vault.md](vault.md) describes the format, the restore pipeline and the developer rules. This page
+covers what is specific to Lift. Everything here lives in **Settings**.
 
-## Encrypted backup
+## Backup
 
-**Backup & restore → Create backup**: choose a password of at least 10 characters, then save the file from the share sheet (Files, a USB drive, AirDrop, or a cloud drive if you pick one). The file exists outside the app only once you save it somewhere. There is no password recovery.
+**Backup → Export data** writes one file, `PendumLift-<date>-<time>.pendumlift`, and opens the share sheet (Android
+also offers **Save to device**). The file is a ZIP and is **not encrypted**; keep it somewhere private.
 
-The file contains:
+It holds, row for row (the descriptor `src/vault-app.ts` lists the tables):
 
 - every workout with its exercises and sets, including what was prescribed
-- programs, their days and slots, skipped sessions and muscle feedback
+- programs, their days and slots, skipped sessions, muscle feedback and the model's nudges
 - custom exercises and per-exercise settings (favorite, avoid, rest)
-- gyms, with their left-out and added exercises, and which one is your main gym
+- gyms, with their left-out and added exercises, your main gym and a trip in progress
 - body weights
+- units, appearance and language
+- the Health bookkeeping: every link between a record and its Apple Health or Health Connect sample (deleted imports
+  included) and the installation ids this library's samples were written under
+- CSV copies of sets and body weight (informational; never read back)
 
-It leaves out:
-
-- the bundled exercise library, which comes with the app
-- appearance, units and language
-- the running rest timer
-- a trip in progress (a restore ends it)
-- Health permissions
-
-It keeps two kinds of Health link, so sync doesn't duplicate anything:
-
-- **Weights imported from Health** stay linked to their samples, so they aren't imported again.
-- **Workouts already saved to Health** keep their Health IDs, so they aren't saved again.
+It leaves out the bundled exercise library, the running rest timer and its Live Activity, Health permissions and the
+sync switch, and the old recovery copy's path.
 
 ## Restore
 
-**Restore backup**:
+**Backup → Restore from a file**: choose the file, check its date and counts, confirm. Restore replaces your records; it
+doesn't merge them. Before anything is replaced, the current library is kept as a recovery set; **Restore data from before
+…** puts it back (the newest two are kept). A library holding only the default gym has nothing to keep.
 
-1. Enter the backup's password and choose the file.
-2. Check its date and counts (workouts, sets, programs, weights).
-3. Confirm.
+Every restore stops the rest timer and turns Health sync off. Turning it on again doesn't duplicate anything:
 
-Restore replaces your records; it doesn't merge them.
+- Restored records keep the client ids they were saved to Health under, so writing them again replaces those samples.
+- Samples written under any installation of this library count as Lift's own and are never imported as readings.
+- An import you deleted stays deleted.
+- On another phone, every linked record is written once more (replacing its sample where that Health has it). From the
+  other platform, records are written under their original client ids, and records deleted there are removed here.
 
-Before anything is replaced, the app writes an encrypted copy of your current records with the same password, reads it back and authenticates it. **Export the recovery backup** shares that copy. To undo a restore, restore that file.
+Values the app accepts are restored as they are: there are no business limits on a restore, only checks for data the app
+couldn't open (damaged JSON, unknown set kinds). Two open workouts or two active programs are reported but restored.
 
-Replacement is one database transaction, so a bad file, a failed recovery copy or a storage error leaves your records as they were.
+## Older backups (v1)
 
-Restore also:
+The encrypted `.backup.json` files from earlier versions still restore through **Restore from a file**:
 
-- stops the rest timer and turns Health sync off
-- starts a fresh namespace for weights written to Health (weights you logged may be written again when you turn sync back on)
+- `lift-track-encrypted-backup` asks for its password (there is no password recovery); `lift-track-backup` opens directly.
+- They're read by the old code (`decryptBackupText` in `src/lib/backup-crypto.ts`, `parseBackup` in
+  `src/lib/backup-data.ts`) and written by `writeBackupRows`, the same insert code the old restore used
+  (`src/vault-legacy.ts`).
+- They replace the training records, body weights, Health links and the main gym. Units, appearance, language and
+  everything else stay as they are on this phone; a trip in progress ends.
+- This phone keeps its Health installation and treats every Lift sample as its own afterwards, so turning sync back on
+  never imports them as readings. A file from **another** phone carries no client ids: its weights are written to Health
+  again under this phone's installation (the preview says so).
+- The last pre-restore copy the old version kept (`LiftTrackBackups/before-restore-<ms>.backup.json`) is still offered as
+  **Restore data from before …** until a `.pendumlift` file is next restored. It's found by file name, so a reinstall that
+  moved the app's folder doesn't lose it.
 
-It never changes Apple Health or Health Connect.
-
-## File format
-
-Version 1, the same scheme as Vector Macros:
-
-- **Key:** PBKDF2-HMAC-SHA256 with 600,000 iterations and a random 16-byte salt.
-- **Cipher:** AES-256-GCM with a random 12-byte nonce, from the Noble libraries. A fixed header is bound as associated data.
-- **Payload:** versioned JSON checked field by field with strict schemas:
-  - bounded numbers and lengths
-  - known enums for muscles, equipment, set types and ratings
-  - custom exercise ids in the app's own format
-  - unique ids
-  - every reference resolves: sets to exercises, exercises to workouts, workouts to gyms and programs, slots to days, days to programs
-  - at most one open workout and one active program
-- **Size:** plaintext is limited to 20 MB.
-- **Safety:** file paths and SQL are never read from a backup.
-- **Passwords** aren't stored. Derived keys are zeroed after use, though JavaScript can't promise every copy is gone.
+The old **Create backup** and its password are gone: new backups are the unencrypted files above.
 
 ## CSV export
 
@@ -85,8 +80,10 @@ Text that looks like a spreadsheet formula is neutralized. CSV is unencrypted an
 **Erase all data** asks for a separate destructive confirmation. It then:
 
 - deletes every personal table, including workouts, programs, exercises, gyms, weights, Health links and settings
-- deletes the app-held recovery backups, pre-migration copies and export cache files
+- deletes the recovery sets, the old recovery copies, pre-migration copies and export cache files
 - stops the rest timer and turns Health sync off
+- keeps the list of Health installations, so turning sync on again doesn't import the erased weights back from Health
+- starts a new library for backups
 
 Deleted rows are overwritten (`secure_delete`), the database is compacted and its write-ahead log emptied.
 
@@ -94,19 +91,20 @@ Erase doesn't touch files you already shared, or Apple Health and Health Connect
 
 ## Pre-migration copies
 
-Before an app update migrates the database, the app saves a copy (`VACUUM INTO`) as `LiftTrackBackups/pre-migration-<n>.db` and keeps the newest two. Fresh installs skip it.
+Before an app update migrates the database, the app saves a copy (`VACUUM INTO`) as
+`LiftTrackBackups/pre-migration-<n>.db` and keeps the newest two. Fresh installs skip it.
 
-If a migration fails, the error screen offers **Share database copy**. These copies are unencrypted, like the live database, and aren't part of a backup.
+If a migration fails, the error screen offers **Share database copy**. These copies are unencrypted, like the live
+database, and aren't part of a backup.
 
 ## Verification
 
-`tests/backup.test.cjs` covers:
+- `tests/vault/*.cjs` (synced) run the vault's export, restore, recovery, crash and v1-import tests against Lift's
+  descriptor and fixture (`tests/vault-fixture.cjs`).
+- `tests/vault-app.test.cjs` covers Lift's Health sync after restores (no duplicated weights, deleted imports stay
+  deleted, `restored:` workout links, iPhone → Android → iPhone), out-of-range values, recovery sets, v1 files with and
+  without a password, preference repairs, validators and erase.
+- `tests/backup.test.cjs` keeps covering the v1 code: encryption, exact restore, rejected files, a restored workout not
+  saved twice, erase and CSV.
 
-- encryption round trip, wrong password, a changed byte, short passwords and fresh nonces
-- a full history restoring exactly onto another phone, with the program continuing where it was
-- inconsistent or foreign files rejected with nothing changed
-- a restored workout not saved to Health twice
-- erase clearing every table
-- CSV rows and formula neutralizing
-
-Share-sheet and file-picker flows need checking on devices.
+Share-sheet, folder-picker and file-picker flows need checking on devices.

@@ -468,7 +468,7 @@
   "training": "トレーニング",
   "travelingAtGym": "旅行中 · {gym}",
   "unitsWithSymbol": "{name} · {unit}",
-  "localOnlyNote": "Vector Liftはすべてをこの端末に保存します。アカウントもサーバーも不要です。",
+  "localOnlyNote": "Pendum Liftはすべてをこの端末に保存します。アカウントもサーバーも不要です。",
   "backupFailed": "バックアップが完了しませんでした。",
   "backupAndRestore": "バックアップと復元",
   "backupIntro": "好きな場所に保存する暗号化ファイルです。クラウドへのコピーやパスワードの復旧はありません。",

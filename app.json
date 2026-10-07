@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "Vector Lift",
+    "name": "Pendum Lift",
     "slug": "lift-track",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -88,7 +88,7 @@
         "@kingstinct/react-native-healthkit",
         {
           "background": false,
-          "NSHealthShareUsageDescription": "Import your body weight into Vector Lift for bodyweight exercises when you choose to sync.",
+          "NSHealthShareUsageDescription": "Import your body weight into Pendum Lift for bodyweight exercises when you choose to sync.",
           "NSHealthUpdateUsageDescription": "Save the body weights you log and your finished workouts to Apple Health when you choose to sync."
         }
       ],
@@ -113,7 +113,18 @@
       "expo-background-task",
       "expo-quick-actions",
       "expo-sharing",
-      "@bacons/apple-targets"
+      "@bacons/apple-targets",
+      [
+        "./plugins/with-vector-vault",
+        {
+          "app": "lift",
+          "icloud": false,
+          "google": {
+            "iosClientId": null,
+            "android": false
+          }
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,

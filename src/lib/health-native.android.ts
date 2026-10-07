@@ -11,6 +11,17 @@ export async function getHealthAdapter(): Promise<HealthAdapter> {
     { recordType: "Weight", accessType: "write" },
     { recordType: "ExerciseSession", accessType: "write" },
   ] as { recordType: "Weight" | "ExerciseSession"; accessType: "read" | "write" }[];
+  // By record id, or by the client id it was written with when the id is "" (a link restored from
+  // an iPhone). Deleting what Health Connect no longer has counts as done.
+  const remove = (recordType: "Weight" | "ExerciseSession", id: string, clientId?: string) =>
+    id || clientId
+      ? hc
+          .deleteRecordsByUuids(recordType, id ? [id] : [], id ? [] : [clientId!])
+          .catch((error: unknown) => {
+            const { message } = (error ?? {}) as { message?: unknown };
+            if (!/not found|does not exist|no such/i.test(`${message ?? ""}`)) throw error;
+          })
+      : Promise.resolve();
   return {
     async authorize(interactive = true) {
       const granted = interactive
@@ -81,8 +92,8 @@ export async function getHealthAdapter(): Promise<HealthAdapter> {
       if (!ids[0]) throw new Error("syncFailed");
       return ids[0];
     },
-    async remove(_kind, id) {
-      await hc.deleteRecordsByUuids("Weight", [id], []);
+    async remove(_kind, id, clientId) {
+      await remove("Weight", id, clientId);
     },
     async writeWorkout(w) {
       const ids = await hc.insertRecords([
@@ -102,8 +113,8 @@ export async function getHealthAdapter(): Promise<HealthAdapter> {
       if (!ids[0]) throw new Error("syncFailed");
       return ids[0];
     },
-    async removeWorkout(id) {
-      await hc.deleteRecordsByUuids("ExerciseSession", [id], []);
+    async removeWorkout(id, clientId) {
+      await remove("ExerciseSession", id, clientId);
     },
   };
 }

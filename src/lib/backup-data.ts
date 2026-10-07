@@ -343,11 +343,10 @@ export function createBackup(): Backup {
   return parseBackup(JSON.stringify(snapshot));
 }
 
-const setPreference = (
-  tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
-  key: string,
-  value: string
-) =>
+/** A transaction of the app's Drizzle database (or of one opened on the same schema). */
+export type BackupTransaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
+
+const setPreference = (tx: BackupTransaction, key: string, value: string) =>
   tx
     .insert(preferences)
     .values({ key, value })
@@ -379,58 +378,7 @@ export function restoreBackup(value: unknown, recoveryUri?: string) {
       healthLinks,
     ])
       tx.delete(table).run();
-    for (const { healthId, ...row } of data.weights) {
-      tx.insert(weightEntries)
-        .values({
-          ...row,
-          createdAt: row.createdAt ? new Date(row.createdAt) : null,
-          updatedAt: row.updatedAt ? new Date(row.updatedAt) : null,
-        })
-        .run();
-      if (healthId)
-        tx.insert(healthLinks)
-          .values({
-            key: `health:weight:${healthId}`,
-            localKind: "weight",
-            localId: row.id,
-            remoteId: healthId,
-            fingerprint: `${row.weightKg}:${row.measuredAt}`,
-            origin: "health",
-          })
-          .onConflictDoNothing()
-          .run();
-    }
-    for (const row of data.customExercises) tx.insert(customExercises).values(row).run();
-    for (const row of data.exerciseSettings) tx.insert(exerciseSettings).values(row).run();
-    for (const row of data.gyms) tx.insert(gyms).values(row).run();
-    for (const row of data.mesocycles) tx.insert(mesocycles).values(row).run();
-    for (const row of data.mesoDays) tx.insert(mesoDays).values(row).run();
-    for (const row of data.mesoSlots) tx.insert(mesoSlots).values(row).run();
-    for (const row of data.mesoSkips) tx.insert(mesoSkips).values(row).run();
-    for (const { healthId, ...row } of data.workouts) {
-      tx.insert(workouts).values(row).run();
-      // Keeps the Health copy: sync matches it by workout and won't save it again.
-      if (healthId && row.endedAt)
-        tx.insert(healthLinks)
-          .values({
-            key: `restored:workout:${row.id}`,
-            localKind: "workout",
-            localId: row.id,
-            remoteId: healthId,
-            fingerprint: `${row.startedAt}|${row.endedAt}|${row.name}`,
-            origin: "local",
-          })
-          .run();
-    }
-    for (const row of data.workoutExercises)
-      tx.insert(workoutExercises)
-        .values(row as typeof workoutExercises.$inferInsert)
-        .run();
-    for (const row of data.sets) tx.insert(sets).values(row).run();
-    for (const row of data.muscleFeedback) tx.insert(muscleFeedback).values(row).run();
-    for (const row of data.aiNudges ?? []) tx.insert(aiNudges).values(row).run();
-    if (data.activeGym !== null) setPreference(tx, "activeGym", String(data.activeGym));
-    else tx.delete(preferences).where(eq(preferences.key, "activeGym")).run();
+    writeBackupRows(tx, data);
     if (recoveryUri) setPreference(tx, "recoveryBackupUri", recoveryUri);
     // Health starts over: sync is off, and weights written from here get a fresh namespace.
     setPreference(tx, "healthSyncEnabled", "false");
@@ -441,6 +389,67 @@ export function restoreBackup(value: unknown, recoveryUri?: string) {
     // A trip names a gym by id, and the restored gyms may not be the same ones.
     tx.delete(preferences).where(eq(preferences.key, "travel")).run();
   });
+}
+
+/**
+ * Writes a validated backup's records into emptied tables with their original ids, parents
+ * first, with the Health links a backup implies and its active gym. restoreBackup() runs it on
+ * the app's database; the vault's import of these files runs it on its scratch copy.
+ */
+export function writeBackupRows(tx: BackupTransaction, data: Backup["data"]) {
+  for (const { healthId, ...row } of data.weights) {
+    tx.insert(weightEntries)
+      .values({
+        ...row,
+        createdAt: row.createdAt ? new Date(row.createdAt) : null,
+        updatedAt: row.updatedAt ? new Date(row.updatedAt) : null,
+      })
+      .run();
+    if (healthId)
+      tx.insert(healthLinks)
+        .values({
+          key: `health:weight:${healthId}`,
+          localKind: "weight",
+          localId: row.id,
+          remoteId: healthId,
+          fingerprint: `${row.weightKg}:${row.measuredAt}`,
+          origin: "health",
+        })
+        .onConflictDoNothing()
+        .run();
+  }
+  for (const row of data.customExercises) tx.insert(customExercises).values(row).run();
+  for (const row of data.exerciseSettings) tx.insert(exerciseSettings).values(row).run();
+  for (const row of data.gyms) tx.insert(gyms).values(row).run();
+  for (const row of data.mesocycles) tx.insert(mesocycles).values(row).run();
+  for (const row of data.mesoDays) tx.insert(mesoDays).values(row).run();
+  for (const row of data.mesoSlots) tx.insert(mesoSlots).values(row).run();
+  for (const row of data.mesoSkips) tx.insert(mesoSkips).values(row).run();
+  for (const { healthId, ...row } of data.workouts) {
+    tx.insert(workouts).values(row).run();
+    // Keeps the Health copy: sync matches it by workout and won't save it again. The key is not
+    // the saved workout's sync id; the link reaches that workout by its remote id only.
+    if (healthId && row.endedAt)
+      tx.insert(healthLinks)
+        .values({
+          key: `restored:workout:${row.id}`,
+          localKind: "workout",
+          localId: row.id,
+          remoteId: healthId,
+          fingerprint: `${row.startedAt}|${row.endedAt}|${row.name}`,
+          origin: "local",
+        })
+        .run();
+  }
+  for (const row of data.workoutExercises)
+    tx.insert(workoutExercises)
+      .values(row as typeof workoutExercises.$inferInsert)
+      .run();
+  for (const row of data.sets) tx.insert(sets).values(row).run();
+  for (const row of data.muscleFeedback) tx.insert(muscleFeedback).values(row).run();
+  for (const row of data.aiNudges ?? []) tx.insert(aiNudges).values(row).run();
+  if (data.activeGym !== null) setPreference(tx, "activeGym", String(data.activeGym));
+  else tx.delete(preferences).where(eq(preferences.key, "activeGym")).run();
 }
 
 /** Record counts for the restore preview. */

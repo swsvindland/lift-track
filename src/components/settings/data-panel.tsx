@@ -3,6 +3,8 @@ import { Alert, View } from "react-native";
 import { eraseLocalData, shareCsv } from "@/lib/data-files";
 import { useExercises } from "@/lib/exercise-store";
 import { useStore } from "@/lib/store";
+import { captureBeforeErase, onLocalDataErased } from "@/vault/engine/erase";
+import { vaultSupported } from "@/vault/native";
 import { Button, Callout, ErrorText, ListRow, SettingsSection } from "@/vector";
 
 export function DataPanel() {
@@ -61,7 +63,12 @@ export function DataPanel() {
               style: "destructive",
               onPress: () =>
                 void run(async () => {
+                  // Health's list of this library's installations outlives the erase, so the
+                  // erased records aren't imported back from Health; backup copies go too.
+                  // Without the vault's native module (Expo Go) there are none to clear.
+                  const keep = vaultSupported ? await captureBeforeErase() : null;
                   await eraseLocalData();
+                  if (keep) await onLocalDataErased(keep);
                   refresh();
                   setMessage(t("erasedNote"));
                 }),

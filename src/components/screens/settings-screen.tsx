@@ -1,7 +1,6 @@
 import { useState, type ReactNode } from "react";
 import { Platform, View } from "react-native";
 import { router } from "expo-router";
-import { BackupPanel } from "@/components/settings/backup-panel";
 import { DataPanel } from "@/components/settings/data-panel";
 import { massUnit } from "@/lib/format";
 import { useStore } from "@/lib/store";
@@ -10,6 +9,7 @@ import { enableHealthSync, disableHealthSync } from "@/lib/health-schedule";
 import { useQuery, write } from "@/lib/data";
 import { activeGym, listGyms, travelPlan, updateGym } from "@/lib/workouts";
 import { convertGym } from "@/lib/loads";
+import { VaultSection } from "@/vault";
 import {
   Callout,
   Choices,
@@ -172,7 +172,7 @@ export function SettingsScreen() {
         {message ? <Callout tone="success">{t(message)}</Callout> : null}
         <ErrorText message={syncError ? t(syncError) : ""} />
       </View>
-      <BackupPanel />
+      <VaultSection />
       <DataPanel />
       <Note className="text-center">{t("localOnlyNote")}</Note>
     </Screen>

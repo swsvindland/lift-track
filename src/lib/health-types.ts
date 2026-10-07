@@ -22,7 +22,12 @@ export type HealthAdapter = {
   authorize: (interactive?: boolean) => Promise<HealthAccess | void>;
   read: () => Promise<HealthRecord[]>;
   write: (record: HealthWrite) => Promise<string>;
-  remove: (kind: HealthKind, id: string) => Promise<void>;
+  /**
+   * Deletes a saved sample by its id, or by the client id it was written with when `id` is ""
+   * (a link restored from the other platform). Deleting what the store no longer has succeeds.
+   */
+  remove: (kind: HealthKind, id: string, clientId?: string) => Promise<void>;
   writeWorkout?: (workout: HealthWorkout) => Promise<string>;
-  removeWorkout?: (id: string) => Promise<void>;
+  /** As `remove`, for a saved workout. */
+  removeWorkout?: (id: string, clientId?: string) => Promise<void>;
 };

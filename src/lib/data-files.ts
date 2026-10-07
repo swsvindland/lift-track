@@ -19,7 +19,7 @@ async function share(file: File, mimeType: string, UTI: string, dialogTitle: str
 export async function shareCsv(kind: "sets" | "weight", exerciseName: (id: string) => string) {
   const file = new File(Paths.cache, `lift-track-${kind}-${Date.now()}.csv`);
   file.write(kind === "sets" ? exportSetsCsv(exerciseName) : exportWeightCsv());
-  await share(file, "text/csv", "public.comma-separated-values-text", "Export Vector Lift data");
+  await share(file, "text/csv", "public.comma-separated-values-text", "Export Pendum Lift data");
 }
 
 export async function shareDatabaseCopy() {
@@ -27,7 +27,7 @@ export async function shareDatabaseCopy() {
   const file = migrationSnapshot?.exists
     ? migrationSnapshot
     : snapshotDatabase(expoDb, migrationState(expoDb, journal)?.applied ?? 0);
-  await share(file, "application/vnd.sqlite3", "public.database", "Save Vector Lift database copy");
+  await share(file, "application/vnd.sqlite3", "public.database", "Save Pendum Lift database copy");
 }
 
 export async function eraseLocalData() {

@@ -17,6 +17,7 @@ import { shareDatabaseCopy } from "@/lib/data-files";
 import { prepareRestNotifications, settleRest } from "@/lib/rest-timer";
 import { WatchLink } from "@/components/watch-link";
 import { VectorAdapter } from "@/vector-adapter";
+import { VaultRoot } from "@/vault";
 import {
   DockProvider,
   ErrorText,
@@ -116,6 +117,8 @@ export default function RootLayout(): JSX.Element | null {
                   </Stack>
                 </DockProvider>
               </NavigationTheme>
+              {/* Backups: starts once the database is migrated; restores refresh the store above. */}
+              <VaultRoot />
               <WatchLink />
               <StatusBar style="auto" />
             </HeroUINativeProvider>
