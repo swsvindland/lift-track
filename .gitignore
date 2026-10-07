@@ -46,3 +46,12 @@ yarn-error.*
 
 # Watch assets are generated from targets/watch/expo-target.config.js at prebuild
 targets/*/Assets.xcassets
+
+# Local Expo modules: Gradle and Xcode output
+modules/*/android/build/
+modules/*/ios/build/
+
+# App build artifacts (local and EAS builds)
+*.ipa
+*.apk
+*.aab
