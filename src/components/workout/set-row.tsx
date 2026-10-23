@@ -1,6 +1,6 @@
 import { useState } from "react";
 // eslint-disable-next-line no-restricted-imports -- the set grid's compact inputs (MIGRATION P1.2 sets)
-import { Pressable, TextInput, View } from "react-native";
+import { Keyboard, Pressable, TextInput, View } from "react-native";
 import { twMerge } from "tailwind-merge";
 import type { Effort, SetKind } from "@/db";
 import { loadValue, useLiftFormat } from "@/lib/format";
@@ -206,7 +206,11 @@ export function SetRowView({
           selected={done}
           accessibilityRole="checkbox"
           accessibilityLabel={t("setDone", { set })}
-          onPress={() => onComplete(patch())}
+          onPress={() => {
+            // The keyboard covers the next sets and the rest bar; checking a set is the end of typing it.
+            Keyboard.dismiss();
+            onComplete(patch());
+          }}
           className={twMerge(columns.done, "p-0")}
         >
           <Icon name="check" size={24} tone="muted" />
